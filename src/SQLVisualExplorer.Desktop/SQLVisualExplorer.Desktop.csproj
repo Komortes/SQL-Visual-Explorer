@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.15" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.15" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.15" Condition="'$(Configuration)' == 'Debug'" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.15" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.15" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.16" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SQLVisualExplorer.UI\SQLVisualExplorer.UI.csproj" />
+    <ProjectReference Include="..\SQLVisualExplorer.Application\SQLVisualExplorer.Application.csproj" />
+    <ProjectReference Include="..\SQLVisualExplorer.Infrastructure\SQLVisualExplorer.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

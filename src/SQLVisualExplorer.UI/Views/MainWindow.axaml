@@ -1,0 +1,181 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="SQLVisualExplorer.UI.Views.MainWindow"
+        Title="SQL Visual Explorer"
+        Width="1200"
+        Height="800"
+        MinWidth="980"
+        MinHeight="640"
+        Background="#101418">
+  <Window.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="#E7ECEF" />
+      <Setter Property="FontFamily" Value="Inter" />
+    </Style>
+
+    <Style Selector="Button.nav-item">
+      <Setter Property="Height" Value="58" />
+      <Setter Property="Margin" Value="10,4" />
+      <Setter Property="Padding" Value="8" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Button.nav-item:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#1B242C" />
+    </Style>
+
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="#141A20" />
+      <Setter Property="BorderBrush" Value="#26313A" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="56,*" ColumnDefinitions="92,*">
+    <Border Grid.Row="0"
+            Grid.ColumnSpan="2"
+            Background="#0D1115"
+            BorderBrush="#222B33"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="18,0">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="12">
+          <Border Width="28" Height="28" CornerRadius="6" Background="#2F80ED">
+            <TextBlock Text="SQL"
+                       FontSize="10"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+          </Border>
+          <TextBlock Text="SQL Visual Explorer"
+                     FontSize="16"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+
+        <Border Grid.Column="1"
+                Width="280"
+                Height="34"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="#151C22"
+                BorderBrush="#2A3640"
+                BorderThickness="1"
+                CornerRadius="6">
+          <TextBlock Text="No connection selected"
+                     Foreground="#9DAAB5"
+                     FontSize="13"
+                     VerticalAlignment="Center"
+                     HorizontalAlignment="Center" />
+        </Border>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+          <Button Width="34" Height="34" Padding="0" Background="#151C22" BorderBrush="#2A3640" CornerRadius="6">
+            <TextBlock Text="!" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Button>
+          <Button Width="34" Height="34" Padding="0" Background="#151C22" BorderBrush="#2A3640" CornerRadius="6">
+            <TextBlock Text="..." HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="1"
+            Grid.Column="0"
+            Background="#0D1115"
+            BorderBrush="#222B33"
+            BorderThickness="0,0,1,0">
+      <ItemsControl ItemsSource="{Binding NavigationItems}" Margin="0,14">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Button Classes="nav-item"
+                    Command="{Binding DataContext.SelectNavigationItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="{Binding Code}"
+                           FontSize="11"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           Foreground="#80B8FF" />
+                <TextBlock Text="{Binding Label}"
+                           FontSize="12"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
+
+    <Grid Grid.Row="1"
+          Grid.Column="1"
+          RowDefinitions="Auto,*,210"
+          Margin="20"
+          RowSpacing="16">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding ActiveTitle}" FontSize="24" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding ActiveSubtitle}"
+                     FontSize="13"
+                     Foreground="#91A0AD" />
+        </StackPanel>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+          <Button Content="Run" Height="34" Padding="16,0" CornerRadius="6" />
+          <Button Content="Explain" Height="34" Padding="16,0" CornerRadius="6" />
+        </StackPanel>
+      </Grid>
+
+      <Grid Grid.Row="1" ColumnDefinitions="2*,*" ColumnSpacing="16">
+        <Border Classes="panel">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Text="SQL Editor" FontSize="14" FontWeight="SemiBold" />
+            <Border Grid.Row="1"
+                    Margin="0,12,0,0"
+                    Background="#0F1419"
+                    BorderBrush="#26313A"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="14">
+              <TextBlock Text="-- SQL editor placeholder"
+                         FontFamily="Menlo, Consolas, monospace"
+                         Foreground="#8FA2B2" />
+            </Border>
+          </Grid>
+        </Border>
+
+        <Border Grid.Column="1" Classes="panel">
+          <StackPanel Spacing="12">
+            <TextBlock Text="Plan Summary" FontSize="14" FontWeight="SemiBold" />
+            <TextBlock Text="Execution-plan preview will appear here after EXPLAIN ANALYZE."
+                       TextWrapping="Wrap"
+                       Foreground="#91A0AD" />
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <Border Grid.Row="2" Classes="panel">
+        <Grid RowDefinitions="Auto,*">
+          <TextBlock Text="Results" FontSize="14" FontWeight="SemiBold" />
+          <Grid Grid.Row="1"
+                Margin="0,12,0,0"
+                RowDefinitions="36,36,36"
+                ColumnDefinitions="*,*,*">
+            <Border Grid.ColumnSpan="3" Background="#0F1419" BorderBrush="#26313A" BorderThickness="0,0,0,1">
+              <TextBlock Text="Column A                         Column B                         Column C"
+                         VerticalAlignment="Center"
+                         Margin="12,0"
+                         Foreground="#91A0AD" />
+            </Border>
+            <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="No query has been executed yet." Margin="12,10,0,0" Foreground="#6F7E89" />
+          </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>
