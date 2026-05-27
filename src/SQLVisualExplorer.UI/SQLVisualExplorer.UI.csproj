@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SQLVisualExplorer.Application\SQLVisualExplorer.Application.csproj" />
+    <ProjectReference Include="..\SQLVisualExplorer.Domain\SQLVisualExplorer.Domain.csproj" />
   </ItemGroup>
 
 </Project>

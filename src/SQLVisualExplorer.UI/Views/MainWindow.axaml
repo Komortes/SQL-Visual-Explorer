@@ -35,6 +35,14 @@
       <Setter Property="CornerRadius" Value="8" />
       <Setter Property="Padding" Value="16" />
     </Style>
+
+    <Style Selector="TextBox">
+      <Setter Property="MinHeight" Value="34" />
+    </Style>
+
+    <Style Selector="ComboBox">
+      <Setter Property="MinHeight" Value="34" />
+    </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="56,*" ColumnDefinitions="92,*">
@@ -67,11 +75,19 @@
                 BorderBrush="#2A3640"
                 BorderThickness="1"
                 CornerRadius="6">
-          <TextBlock Text="No connection selected"
-                     Foreground="#9DAAB5"
-                     FontSize="13"
-                     VerticalAlignment="Center"
-                     HorizontalAlignment="Center" />
+          <ComboBox ItemsSource="{Binding Connections}"
+                    SelectedItem="{Binding SelectedConnection}"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Center"
+                    PlaceholderText="No connection selected">
+            <ComboBox.ItemTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </Border>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
@@ -125,14 +141,35 @@
                      Foreground="#91A0AD" />
         </StackPanel>
 
-        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
-          <Button Content="Run" Height="34" Padding="16,0" CornerRadius="6" />
-          <Button Content="Explain" Height="34" Padding="16,0" CornerRadius="6" />
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center"
+                    Spacing="8"
+                    IsVisible="{Binding IsWorkspaceVisible}">
+          <Button Content="Run"
+                  Height="34"
+                  Padding="16,0"
+                  CornerRadius="6"
+                  Command="{Binding RunQueryCommand}" />
+          <Button Content="Explain"
+                  Height="34"
+                  Padding="16,0"
+                  CornerRadius="6"
+                  Command="{Binding ExplainQueryCommand}" />
+          <Button Content="Analyze"
+                  Height="34"
+                  Padding="16,0"
+                  CornerRadius="6"
+                  Command="{Binding ExplainAnalyzeQueryCommand}" />
         </StackPanel>
       </Grid>
 
-      <Grid Grid.Row="1" ColumnDefinitions="2*,*" ColumnSpacing="16">
-        <Border Classes="panel">
+      <Grid Grid.Row="1"
+            ColumnDefinitions="2*,*"
+            ColumnSpacing="16"
+            IsVisible="{Binding IsWorkspaceVisible}">
+        <Border Classes="panel"
+                IsVisible="{Binding IsEditorVisible}">
           <Grid RowDefinitions="Auto,*">
             <TextBlock Text="SQL Editor" FontSize="14" FontWeight="SemiBold" />
             <Border Grid.Row="1"
@@ -142,37 +179,525 @@
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="14">
-              <TextBlock Text="-- SQL editor placeholder"
-                         FontFamily="Menlo, Consolas, monospace"
-                         Foreground="#8FA2B2" />
+              <TextBox Text="{Binding SqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       FontFamily="Menlo, Consolas, monospace"
+                       FontSize="13"
+                       Background="Transparent"
+                       BorderBrush="Transparent"
+                       Foreground="#CFE3F2"
+                       Watermark="select * from table_name limit 100;" />
             </Border>
+          </Grid>
+        </Border>
+
+        <Border Classes="panel"
+                IsVisible="{Binding IsPlanVisible}">
+          <Grid RowDefinitions="Auto,*">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding PlanTreeHeaderText}" FontSize="14" FontWeight="SemiBold" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                <Button Content="Tree"
+                        Height="28"
+                        Padding="10,0"
+                        Command="{Binding ShowPlanTreeCommand}" />
+                <Button Content="Flame"
+                        Height="28"
+                        Padding="10,0"
+                        Command="{Binding ShowPlanFlamegraphCommand}" />
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <Border Width="10" Height="10" CornerRadius="5" Background="#7BD88F" VerticalAlignment="Center" />
+                  <TextBlock Text="Low" FontSize="11" Foreground="#91A0AD" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <Border Width="10" Height="10" CornerRadius="5" Background="#FFD166" VerticalAlignment="Center" />
+                  <TextBlock Text="Medium" FontSize="11" Foreground="#91A0AD" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <Border Width="10" Height="10" CornerRadius="5" Background="#FF8A7A" VerticalAlignment="Center" />
+                  <TextBlock Text="High" FontSize="11" Foreground="#91A0AD" />
+                </StackPanel>
+              </StackPanel>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,12,0,0"
+                          IsVisible="{Binding IsPlanTreeVisible}">
+              <ItemsControl ItemsSource="{Binding VisualPlanNodes}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Margin="{Binding IndentMargin}"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            HorizontalAlignment="Left"
+                            Command="{Binding DataContext.SelectPlanNodeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}">
+                      <Border Padding="12"
+                              Background="{Binding SelectionBackground}"
+                              BorderBrush="{Binding SelectionBorderBrush}"
+                              BorderThickness="1"
+                              CornerRadius="8"
+                              MaxWidth="720">
+                        <Grid ColumnDefinitions="6,*,Auto" ColumnSpacing="12">
+                          <Border Background="{Binding AccentColor}"
+                                  CornerRadius="3" />
+
+                          <StackPanel Grid.Column="1" Spacing="8">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                              <Border Padding="6,3"
+                                      Background="#17212A"
+                                      BorderBrush="#2A3640"
+                                      BorderThickness="1"
+                                      CornerRadius="6">
+                                <TextBlock Text="{Binding DepthLabel}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="#80B8FF" />
+                              </Border>
+
+                              <TextBlock Grid.Column="1"
+                                         Text="{Binding Label}"
+                                         FontSize="14"
+                                         FontWeight="SemiBold"
+                                         TextWrapping="Wrap" />
+
+                              <TextBlock Grid.Column="2"
+                                         Text="{Binding IssueText}"
+                                         Foreground="{Binding IssueColor}"
+                                         FontSize="12"
+                                         FontWeight="SemiBold"
+                                         VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+                              <TextBlock Text="{Binding NodeType}"
+                                         FontSize="12"
+                                         Foreground="#C6D0D8" />
+                              <TextBlock Grid.Column="1"
+                                         Text="{Binding CostText}"
+                                         FontSize="12"
+                                         Foreground="#91A0AD" />
+                              <TextBlock Grid.Column="2"
+                                         Text="{Binding RowsText}"
+                                         FontSize="12"
+                                         Foreground="#91A0AD" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="180,*" ColumnSpacing="12">
+                              <Border Height="6"
+                                      Background="#202B33"
+                                      CornerRadius="3"
+                                      VerticalAlignment="Center">
+                                <Border Width="{Binding CostBarWidth}"
+                                        Background="{Binding AccentColor}"
+                                        HorizontalAlignment="Left"
+                                        CornerRadius="3" />
+                              </Border>
+                              <TextBlock Grid.Column="1"
+                                         Text="{Binding TimeText}"
+                                         FontSize="12"
+                                         Foreground="#91A0AD" />
+                            </Grid>
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="0,12,0,0"
+                          IsVisible="{Binding IsPlanFlamegraphVisible}">
+              <ItemsControl ItemsSource="{Binding VisualPlanNodes}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Button Margin="{Binding FlameMargin}"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            HorizontalAlignment="Left"
+                            Command="{Binding DataContext.SelectPlanNodeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}">
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Border Width="{Binding FlameBarWidth}"
+                                Height="34"
+                                Background="{Binding AccentColor}"
+                                BorderBrush="{Binding SelectionBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6" />
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="12"
+                                    VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Label}"
+                                     FontSize="13"
+                                     FontWeight="SemiBold"
+                                     TextWrapping="NoWrap" />
+                          <TextBlock Text="{Binding FlameMetricText}"
+                                     FontSize="12"
+                                     Foreground="#91A0AD" />
+                          <TextBlock Text="{Binding IssueText}"
+                                     FontSize="12"
+                                     FontWeight="SemiBold"
+                                     Foreground="{Binding IssueColor}" />
+                        </StackPanel>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
           </Grid>
         </Border>
 
         <Border Grid.Column="1" Classes="panel">
           <StackPanel Spacing="12">
             <TextBlock Text="Plan Summary" FontSize="14" FontWeight="SemiBold" />
-            <TextBlock Text="Execution-plan preview will appear here after EXPLAIN ANALYZE."
+            <TextBlock Text="{Binding PlanSummaryText}"
                        TextWrapping="Wrap"
                        Foreground="#91A0AD" />
+            <Border Height="1" Background="#26313A" />
+            <TextBlock Text="Selected Node" FontSize="14" FontWeight="SemiBold" />
+            <Border Padding="10"
+                    Background="#0F1419"
+                    BorderBrush="#26313A"
+                    BorderThickness="1"
+                    CornerRadius="8">
+              <StackPanel Spacing="8">
+                <TextBlock Text="{Binding SelectedPlanNodeTitle}"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SelectedPlanNodeDetails}"
+                           FontFamily="Menlo, Consolas, monospace"
+                           FontSize="12"
+                           Foreground="#91A0AD"
+                           TextWrapping="Wrap" />
+                <ItemsControl ItemsSource="{Binding SelectedPlanNodeIssues}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Margin="0,0,0,6"
+                              Padding="8"
+                              Background="#17212A"
+                              BorderBrush="#2A3640"
+                              BorderThickness="1"
+                              CornerRadius="6">
+                        <StackPanel Spacing="4">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding Code}"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Foreground="#C6D0D8" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding Severity}"
+                                       FontSize="11"
+                                       Foreground="{Binding SeverityColor}" />
+                          </Grid>
+                          <TextBlock Text="{Binding Recommendation}"
+                                     FontSize="11"
+                                     Foreground="#91A0AD"
+                                     TextWrapping="Wrap" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <Border Height="1" Background="#26313A" />
+            <TextBlock Text="Issues" FontSize="14" FontWeight="SemiBold" />
+            <ScrollViewer MaxHeight="220">
+              <ItemsControl ItemsSource="{Binding PlanIssues}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Margin="0,0,0,10"
+                            Padding="10"
+                            Background="#0F1419"
+                            BorderBrush="#26313A"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                      <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Text="{Binding Title}"
+                                     FontSize="13"
+                                     FontWeight="SemiBold"
+                                     TextWrapping="Wrap" />
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding Severity}"
+                                     Foreground="{Binding SeverityColor}"
+                                     FontSize="12"
+                                     FontWeight="SemiBold" />
+                        </Grid>
+                        <TextBlock Text="{Binding Code}"
+                                   FontSize="11"
+                                   Foreground="#6F7E89" />
+                        <TextBlock Text="{Binding Description}"
+                                   FontSize="12"
+                                   Foreground="#C6D0D8"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Recommendation}"
+                                   FontSize="12"
+                                   Foreground="#91A0AD"
+                                   TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <Border Height="1" Background="#26313A" />
+            <TextBlock Text="Session Password" FontSize="14" FontWeight="SemiBold" />
+            <TextBlock Text="Used only for Run in this session. It is not saved."
+                       TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="#91A0AD" />
+            <TextBox Text="{Binding SelectedConnectionPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     PasswordChar="*"
+                     Watermark="Password for selected connection" />
           </StackPanel>
         </Border>
       </Grid>
 
-      <Border Grid.Row="2" Classes="panel">
+      <Grid Grid.Row="1"
+            Grid.RowSpan="2"
+            ColumnDefinitions="360,*"
+            ColumnSpacing="16"
+            IsVisible="{Binding IsConnectionsVisible}">
+        <Border Classes="panel">
+          <StackPanel Spacing="12">
+            <TextBlock Text="New Connection" FontSize="14" FontWeight="SemiBold" />
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Name" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewConnectionName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="Production DB" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Type" FontSize="12" Foreground="#91A0AD" />
+              <ComboBox ItemsSource="{Binding DatabaseTypeOptions}"
+                        SelectedItem="{Binding NewConnectionDatabaseType}" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,100" ColumnSpacing="10">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Host" FontSize="12" Foreground="#91A0AD" />
+                <TextBox Text="{Binding NewConnectionHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="localhost" />
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Spacing="6">
+                <TextBlock Text="Port" FontSize="12" Foreground="#91A0AD" />
+                <TextBox Text="{Binding NewConnectionPort, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="5432" />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Database" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewConnectionDatabase, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="app_db" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Username" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewConnectionUsername, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="postgres" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Password" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewConnectionPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       PasswordChar="*"
+                       Watermark="Used for test only" />
+            </StackPanel>
+
+            <CheckBox Content="Use SSL" IsChecked="{Binding NewConnectionUseSsl}" />
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+              <Button Content="Test Connection"
+                      Height="36"
+                      HorizontalAlignment="Stretch"
+                      Command="{Binding TestConnectionCommand}" />
+              <Button Grid.Column="1"
+                      Content="Save Connection"
+                      Height="36"
+                      HorizontalAlignment="Stretch"
+                      Command="{Binding SaveConnectionCommand}" />
+            </Grid>
+
+            <TextBlock Text="{Binding ConnectionStatusMessage}"
+                       FontSize="12"
+                       Foreground="#91A0AD"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="Passwords are not stored yet; Keychain support will be added separately."
+                       FontSize="11"
+                       Foreground="#6F7E89"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Column="1" Classes="panel">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Text="Saved Connections" FontSize="14" FontWeight="SemiBold" />
+
+            <ScrollViewer Grid.Row="1" Margin="0,12,0,0">
+              <ItemsControl ItemsSource="{Binding Connections}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Margin="0,0,0,10"
+                            Padding="14"
+                            Background="#0F1419"
+                            BorderBrush="#26313A"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding Endpoint}" FontSize="12" Foreground="#91A0AD" />
+                        </StackPanel>
+
+                        <Border Grid.Column="1"
+                                Padding="8,4"
+                                Background="#17212A"
+                                BorderBrush="#2A3640"
+                                BorderThickness="1"
+                                CornerRadius="6">
+                          <TextBlock Text="{Binding DatabaseType}" FontSize="12" Foreground="#80B8FF" />
+                        </Border>
+
+                        <StackPanel Grid.Row="1"
+                                    Grid.ColumnSpan="2"
+                                    Orientation="Horizontal"
+                                    Margin="0,12,0,0"
+                                    Spacing="16">
+                          <TextBlock Text="{Binding Database}" FontSize="12" Foreground="#C6D0D8" />
+                          <TextBlock Text="{Binding Username}" FontSize="12" Foreground="#91A0AD" />
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <Border Grid.Row="1"
+              Grid.RowSpan="2"
+              Classes="panel"
+              IsVisible="{Binding IsHistoryVisible}">
         <Grid RowDefinitions="Auto,*">
-          <TextBlock Text="Results" FontSize="14" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Recent Queries" FontSize="14" FontWeight="SemiBold" />
+            <Button Grid.Column="1"
+                    Content="Refresh"
+                    Height="32"
+                    Padding="14,0"
+                    Command="{Binding LoadHistoryCommand}" />
+          </Grid>
+
+          <ScrollViewer Grid.Row="1" Margin="0,12,0,0">
+            <ItemsControl ItemsSource="{Binding HistoryItems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,0,10"
+                          Padding="14"
+                          Background="#0F1419"
+                          BorderBrush="#26313A"
+                          BorderThickness="1"
+                          CornerRadius="8">
+                    <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Status}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#80B8FF" />
+                        <TextBlock Text="{Binding ConnectionName}"
+                                   FontSize="12"
+                                   Foreground="#C6D0D8" />
+                        <TextBlock Text="{Binding ExecutedAt}"
+                                   FontSize="12"
+                                   Foreground="#91A0AD" />
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Duration}"
+                                   FontSize="12"
+                                   Foreground="#91A0AD" />
+                        <TextBlock Text="{Binding RowCount}"
+                                   FontSize="12"
+                                   Foreground="#91A0AD" />
+                        <Button Content="Open"
+                                Height="28"
+                                Padding="10,0"
+                                Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                      </StackPanel>
+
+                      <TextBlock Grid.Row="1"
+                                 Grid.ColumnSpan="2"
+                                 Text="{Binding SqlPreview}"
+                                 Margin="0,10,0,0"
+                                 FontFamily="Menlo, Consolas, monospace"
+                                 FontSize="12"
+                                 Foreground="#CFE3F2"
+                                 TextWrapping="Wrap" />
+
+                      <TextBlock Grid.Row="2"
+                                 Grid.ColumnSpan="2"
+                                 Text="{Binding ErrorMessage}"
+                                 Margin="0,8,0,0"
+                                 FontSize="12"
+                                 Foreground="#FFB1A8"
+                                 TextWrapping="Wrap" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <Border Grid.Row="2" Classes="panel" IsVisible="{Binding IsWorkspaceVisible}">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="Results" FontSize="14" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding QueryStatusMessage}"
+                       FontSize="12"
+                       Foreground="#91A0AD"
+                       VerticalAlignment="Center" />
+          </Grid>
           <Grid Grid.Row="1"
                 Margin="0,12,0,0"
-                RowDefinitions="36,36,36"
-                ColumnDefinitions="*,*,*">
-            <Border Grid.ColumnSpan="3" Background="#0F1419" BorderBrush="#26313A" BorderThickness="0,0,0,1">
-              <TextBlock Text="Column A                         Column B                         Column C"
+                RowDefinitions="36,*">
+            <Border Background="#0F1419" BorderBrush="#26313A" BorderThickness="0,0,0,1">
+              <TextBlock Text="{Binding ResultHeaderText}"
                          VerticalAlignment="Center"
                          Margin="12,0"
+                         FontFamily="Menlo, Consolas, monospace"
+                         FontSize="12"
                          Foreground="#91A0AD" />
             </Border>
-            <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="No query has been executed yet." Margin="12,10,0,0" Foreground="#6F7E89" />
+
+            <ScrollViewer Grid.Row="1">
+              <ItemsControl ItemsSource="{Binding ResultRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Padding="12,8"
+                            BorderBrush="#202B33"
+                            BorderThickness="0,0,0,1">
+                      <TextBlock Text="{Binding DisplayText}"
+                                 FontFamily="Menlo, Consolas, monospace"
+                                 FontSize="12"
+                                 Foreground="#CFE3F2" />
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
           </Grid>
         </Grid>
       </Border>

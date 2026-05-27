@@ -2,7 +2,9 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SQLVisualExplorer.Application.Services;
 using SQLVisualExplorer.Domain.Enums;
+using SQLVisualExplorer.Domain.Models;
 using SQLVisualExplorer.Infrastructure.Database;
+using SQLVisualExplorer.Infrastructure.Drivers;
 using SQLVisualExplorer.Infrastructure.Services;
 
 namespace SQLVisualExplorer.Infrastructure.Tests;
@@ -77,6 +79,69 @@ public sealed class ConnectionServiceTests
         Assert.Empty(connections);
     }
 
+    [Fact]
+    public async Task TestConnectionAsync_ReturnsUnsupported_WhenNoDriverMatches()
+    {
+        await using var fixture = await ConnectionServiceFixture.CreateAsync();
+        var service = fixture.CreateService();
+
+        var result = await service.TestConnectionAsync(new CreateConnectionRequest
+        {
+            Name = "Local SQLite",
+            DatabaseType = DatabaseType.SQLite,
+            Database = "local.db"
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("not supported", result.Message);
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_UsesMatchingDriver()
+    {
+        await using var fixture = await ConnectionServiceFixture.CreateAsync();
+        var driver = new StubDatabaseDriver(DatabaseType.PostgreSql);
+        var service = fixture.CreateService(driver);
+
+        var result = await service.TestConnectionAsync(new CreateConnectionRequest
+        {
+            Name = "Local Postgres",
+            DatabaseType = DatabaseType.PostgreSql,
+            Host = "localhost",
+            Port = 5432,
+            Database = "app_db",
+            Username = "postgres",
+            Password = "secret"
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Driver accepted connection.", result.Message);
+        Assert.Equal("secret", driver.LastTestedConnection?.Password);
+    }
+
+    [Fact]
+    public async Task CreateConnectionAsync_DoesNotPersistPassword()
+    {
+        await using var fixture = await ConnectionServiceFixture.CreateAsync();
+        var service = fixture.CreateService();
+
+        var created = await service.CreateConnectionAsync(new CreateConnectionRequest
+        {
+            Name = "Local Postgres",
+            DatabaseType = DatabaseType.PostgreSql,
+            Host = "localhost",
+            Port = 5432,
+            Database = "app_db",
+            Username = "postgres",
+            Password = "secret"
+        });
+
+        var stored = await service.GetConnectionAsync(created.Id);
+
+        Assert.NotNull(stored);
+        Assert.Null(stored.Password);
+    }
+
     private sealed class ConnectionServiceFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
@@ -104,14 +169,48 @@ public sealed class ConnectionServiceTests
             return new ConnectionServiceFixture(connection, options);
         }
 
-        public ConnectionService CreateService()
+        public ConnectionService CreateService(params IDatabaseDriver[] drivers)
         {
-            return new ConnectionService(new AppDbContext(Options));
+            return new ConnectionService(new AppDbContext(Options), drivers);
         }
 
         public async ValueTask DisposeAsync()
         {
             await _connection.DisposeAsync();
+        }
+    }
+
+    private sealed class StubDatabaseDriver(DatabaseType databaseType) : IDatabaseDriver
+    {
+        public Connection? LastTestedConnection { get; private set; }
+
+        public bool Supports(DatabaseType candidate)
+        {
+            return candidate == databaseType;
+        }
+
+        public Task<ConnectionTestResult> TestConnectionAsync(
+            Connection connection,
+            CancellationToken cancellationToken = default)
+        {
+            LastTestedConnection = connection;
+
+            return Task.FromResult(ConnectionTestResult.Success("Driver accepted connection."));
+        }
+
+        public Task<QueryResult> ExecuteAsync(Connection connection, string sql, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> ExplainAsync(Connection connection, string sql, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<string> ExplainAnalyzeAsync(Connection connection, string sql, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 }

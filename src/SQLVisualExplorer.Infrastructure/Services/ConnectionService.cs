@@ -4,10 +4,11 @@ using SQLVisualExplorer.Domain.Enums;
 using SQLVisualExplorer.Domain.Models;
 using SQLVisualExplorer.Infrastructure.Database;
 using SQLVisualExplorer.Infrastructure.Database.Entities;
+using SQLVisualExplorer.Infrastructure.Drivers;
 
 namespace SQLVisualExplorer.Infrastructure.Services;
 
-public sealed class ConnectionService(AppDbContext dbContext) : IConnectionService
+public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatabaseDriver> drivers) : IConnectionService
 {
     public async Task<IReadOnlyList<Connection>> GetConnectionsAsync(CancellationToken cancellationToken = default)
     {
@@ -70,6 +71,32 @@ public sealed class ConnectionService(AppDbContext dbContext) : IConnectionServi
             .ExecuteDeleteAsync(cancellationToken);
 
         return rowsDeleted > 0;
+    }
+
+    public async Task<ConnectionTestResult> TestConnectionAsync(
+        CreateConnectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var driver = drivers.FirstOrDefault(candidate => candidate.Supports(request.DatabaseType));
+
+        if (driver is null)
+        {
+            return ConnectionTestResult.Failure($"{request.DatabaseType} test connection is not supported yet.");
+        }
+
+        var connection = new Connection
+        {
+            Name = request.Name,
+            DatabaseType = request.DatabaseType,
+            Host = NormalizeOptionalText(request.Host),
+            Port = request.Port,
+            Database = request.Database.Trim(),
+            Username = NormalizeOptionalText(request.Username),
+            Password = NormalizeOptionalText(request.Password),
+            UseSsl = request.UseSsl
+        };
+
+        return await driver.TestConnectionAsync(connection, cancellationToken);
     }
 
     private static void Apply(ConnectionEntity entity, CreateConnectionRequest request)

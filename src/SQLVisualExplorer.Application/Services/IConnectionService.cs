@@ -13,4 +13,8 @@ public interface IConnectionService
     Task<Connection?> UpdateConnectionAsync(Guid id, UpdateConnectionRequest request, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteConnectionAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<ConnectionTestResult> TestConnectionAsync(
+        CreateConnectionRequest request,
+        CancellationToken cancellationToken = default);
 }

@@ -16,5 +16,7 @@ public sealed class CreateConnectionRequest
 
     public string? Username { get; init; }
 
+    public string? Password { get; init; }
+
     public bool UseSsl { get; init; }
 }

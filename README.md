@@ -12,7 +12,7 @@ Desktop SQL analysis tool for query execution, execution-plan visualization, and
 
 ## Current State
 
-Initial solution skeleton with an Avalonia desktop bootstrap, shell UI, dependency injection wiring, EF Core SQLite model, startup database migration, and an initial SQLite migration. No database drivers, query execution, or plan-analysis implementation has been added yet.
+Initial solution skeleton with an Avalonia desktop bootstrap, shell UI, dependency injection wiring, EF Core SQLite model, startup database migration, an initial SQLite migration, and a basic Connections screen that saves connection metadata locally. PostgreSQL/MySQL/MariaDB connection testing and query execution are wired through native drivers and connected to the Editor Run action. Query runs are recorded in local history and displayed on the History screen, where entries can be reopened in the editor. Passwords are accepted for test connections and session query execution but are not persisted yet. Plan-analysis implementation has not been added yet.
 
 ## Build
 
