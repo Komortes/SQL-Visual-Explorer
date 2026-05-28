@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="SQLVisualExplorer.UI.Controls.PlanGraphControl">
+  <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                VerticalScrollBarVisibility="Auto">
+    <LayoutTransformControl x:Name="ZoomContainer">
+      <LayoutTransformControl.LayoutTransform>
+        <ScaleTransform ScaleX="{Binding GraphZoom, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        ScaleY="{Binding GraphZoom, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+      </LayoutTransformControl.LayoutTransform>
+      <Canvas x:Name="GraphCanvas" Background="Transparent"/>
+    </LayoutTransformControl>
+  </ScrollViewer>
+</UserControl>

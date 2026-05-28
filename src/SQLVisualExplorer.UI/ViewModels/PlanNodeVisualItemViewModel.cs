@@ -10,6 +10,12 @@ public sealed partial class PlanNodeVisualItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    [ObservableProperty]
+    private double _graphX;
+
+    [ObservableProperty]
+    private double _graphY;
+
     public Guid NodeId { get; init; }
 
     public string Label { get; init; } = string.Empty;

@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SQLVisualExplorer.Infrastructure\SQLVisualExplorer.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\SQLVisualExplorer.Application\SQLVisualExplorer.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

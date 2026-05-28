@@ -95,7 +95,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _planSummaryText = "Run Explain to inspect the selected query plan.";
 
     [ObservableProperty]
+    private bool _hasPlanIssues;
+
+    [ObservableProperty]
+    private string _planIssuesBadgeText = string.Empty;
+
+    [ObservableProperty]
+    private string _planIssuesBadgeColor = "#91A0AD";
+
+    [ObservableProperty]
     private string _planTreeHeaderText = "Plan Tree";
+
+    [ObservableProperty]
+    private double _graphWidth = 800;
+
+    [ObservableProperty]
+    private double _graphHeight = 600;
+
+    [ObservableProperty]
+    private double _graphZoom = 1.0;
 
     [ObservableProperty]
     private string _selectedPlanNodeTitle = "No plan node selected.";
@@ -125,14 +143,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         NavigationItems =
         [
-            new("ED", "Editor", "Query execution workspace"),
-            new("PL", "Plan", "Execution plan tree"),
-            new("CP", "Compare", "Query comparison"),
-            new("HS", "History", "Executed query history"),
-            new("DB", "Connect", "Database connections")
+            new("ED", "Editor",  "Query execution workspace",
+                "M2,2 H10 L14,6 V14 H2 Z M10,2 V6 H14 M4,8 H10 M4,10 H12 M4,12 H8"),
+            new("PL", "Plan",    "Execution plan tree",
+                "M7,0 A1.5,1.5,0,1,0,9,0 A1.5,1.5,0,1,0,7,0 M8,1.5 V6 M8,6 L4,9 M8,6 L12,9 M3,9 A1.5,1.5,0,1,0,5,9 A1.5,1.5,0,1,0,3,9 M11,9 A1.5,1.5,0,1,0,13,9 A1.5,1.5,0,1,0,11,9"),
+            new("CP", "Compare", "Query comparison",
+                "M2,5 H11 L9,3 M9,7 L11,5 M14,11 H5 L7,9 M7,13 L5,11"),
+            new("HS", "History", "Executed query history",
+                "M8,1 A7,7,0,1,0,8,15 A7,7,0,1,0,8,1 M8,4 V8 L11,10"),
+            new("DB", "Connect", "Database connections",
+                "M2,4 A6,2,0,1,0,14,4 M2,4 L2,12 A6,2,0,0,0,14,12 L14,4 M2,8 A6,2,0,0,0,14,8"),
         ];
 
         _selectedNavigationItem = NavigationItems[0];
+        NavigationItems[0].IsActive = true;
 
         DatabaseTypeOptions = new ObservableCollection<DatabaseType>
         {
@@ -154,6 +178,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<PlanNodeVisualItemViewModel> VisualPlanNodes { get; } = [];
 
+    public ObservableCollection<GraphEdgeViewModel> GraphEdges { get; } = [];
+
     public ObservableCollection<PlanIssueItemViewModel> PlanIssues { get; } = [];
 
     public ObservableCollection<PlanIssueItemViewModel> SelectedPlanNodeIssues { get; } = [];
@@ -168,6 +194,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ActiveTitle));
         OnPropertyChanged(nameof(ActiveSubtitle));
+
+        foreach (var item in NavigationItems)
+            item.IsActive = false;
+        value.IsActive = true;
 
         IsConnectionsVisible = value.Code == "DB";
         IsHistoryVisible = value.Code == "HS";
@@ -190,6 +220,36 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void SelectNavigationItem(ShellNavigationItemViewModel navigationItem)
     {
         SelectedNavigationItem = navigationItem;
+    }
+
+    [RelayCommand]
+    private void ZoomIn()  => GraphZoom = Math.Min(GraphZoom + 0.2, 2.0);
+
+    [RelayCommand]
+    private void ZoomOut() => GraphZoom = Math.Max(GraphZoom - 0.2, 0.4);
+
+    [RelayCommand]
+    private void ZoomFit() => GraphZoom = 1.0;
+
+    [RelayCommand]
+    private void SelectConnection(ConnectionListItemViewModel item)
+    {
+        SelectedConnection = item;
+        SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
+    }
+
+    [RelayCommand]
+    private async Task DeleteConnectionAsync(ConnectionListItemViewModel item)
+    {
+        await _connectionService.DeleteConnectionAsync(item.Id);
+        Connections.Remove(item);
+
+        if (SelectedConnection?.Id == item.Id)
+        {
+            SelectedConnection = Connections.FirstOrDefault();
+        }
+
+        ConnectionStatusMessage = $"Deleted \"{item.Name}\".";
     }
 
     [RelayCommand]
@@ -372,10 +432,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
         QueryStatusMessage = runningStatus;
         ResultRows.Clear();
         VisualPlanNodes.Clear();
+        GraphEdges.Clear();
         PlanIssues.Clear();
         SelectedPlanNodeIssues.Clear();
         ResultHeaderText = string.Empty;
         PlanSummaryText = runningSummary;
+        HasPlanIssues = false;
+        PlanIssuesBadgeText = string.Empty;
         SelectedPlanNodeTitle = "No plan node selected.";
         SelectedPlanNodeDetails = "Explain is running.";
         var stopwatch = Stopwatch.StartNew();
@@ -418,7 +481,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
             }
 
             PlanSummaryText = BuildPlanSummary(plan.Root, flattenedNodes.Count, plan.Issues.Count);
-            PlanTreeHeaderText = $"Plan Tree ({flattenedNodes.Count} node(s))";
+            UpdateIssuesBadge(plan.Issues);
+            PlanTreeHeaderText = $"Plan Graph ({flattenedNodes.Count} node(s))";
+
+            if (plan.Root is not null)
+                ApplyGraphLayout(plan.Root);
             SelectPlanNode(VisualPlanNodes.FirstOrDefault());
             QueryStatusMessage = $"{label} returned {flattenedNodes.Count} plan node(s), {plan.Issues.Count} issue(s) in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.";
             SelectedNavigationItem = NavigationItems.First(item => item.Code == "PL");
@@ -563,6 +630,62 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 yield return item;
             }
         }
+    }
+
+    private void ApplyGraphLayout(PlanNode root)
+    {
+        var positions = GraphLayoutEngine.Arrange(root);
+
+        foreach (var vm in VisualPlanNodes)
+        {
+            if (positions.TryGetValue(vm.NodeId, out var pos))
+            {
+                vm.GraphX = pos.X;
+                vm.GraphY = pos.Y;
+            }
+        }
+
+        GraphEdges.Clear();
+        BuildEdges(root, positions);
+
+        var maxX = positions.Values.Select(p => p.X).DefaultIfEmpty(0).Max();
+        var maxY = positions.Values.Select(p => p.Y).DefaultIfEmpty(0).Max();
+        GraphWidth  = maxX + GraphLayoutEngine.NodeWidth  + 40;
+        GraphHeight = maxY + GraphLayoutEngine.NodeHeight + 40;
+        GraphZoom   = 1.0;
+    }
+
+    private void BuildEdges(PlanNode node, IReadOnlyDictionary<Guid, (double X, double Y)> positions)
+    {
+        if (!positions.TryGetValue(node.Id, out var parentPos))
+            return;
+
+        foreach (var child in node.Children)
+        {
+            if (positions.TryGetValue(child.Id, out var childPos))
+            {
+                GraphEdges.Add(new GraphEdgeViewModel
+                {
+                    X1 = parentPos.X + GraphLayoutEngine.NodeWidth / 2,
+                    Y1 = parentPos.Y + GraphLayoutEngine.NodeHeight,
+                    X2 = childPos.X  + GraphLayoutEngine.NodeWidth / 2,
+                    Y2 = childPos.Y,
+                });
+            }
+
+            BuildEdges(child, positions);
+        }
+    }
+
+    private void UpdateIssuesBadge(IReadOnlyList<PlanIssue> issues)
+    {
+        HasPlanIssues = issues.Count > 0;
+        PlanIssuesBadgeText = $"{issues.Count} issue(s)";
+        PlanIssuesBadgeColor = issues.Any(i => i.Severity == IssueSeverity.Critical)
+            ? "#FF8A7A"
+            : issues.Any(i => i.Severity == IssueSeverity.Warning)
+                ? "#FFD166"
+                : "#80B8FF";
     }
 
     private static string BuildPlanSummary(PlanNode? root, int nodeCount, int issueCount)

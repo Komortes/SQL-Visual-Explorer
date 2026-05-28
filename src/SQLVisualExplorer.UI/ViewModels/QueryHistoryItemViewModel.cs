@@ -22,8 +22,21 @@ public sealed class QueryHistoryItemViewModel
 
     public string ErrorMessage { get; init; } = string.Empty;
 
+    public string StatusBadgeText { get; init; } = string.Empty;
+
+    public string StatusBadgeBackground { get; init; } = "#17212A";
+
+    public string StatusBadgeForeground { get; init; } = "#91A0AD";
+
     public static QueryHistoryItemViewModel FromEntry(QueryHistoryEntry entry)
     {
+        var (badgeText, badgeBg, badgeFg) = entry.Status switch
+        {
+            "success" => ("OK",   "#0F2014", "#7BD88F"),
+            "error"   => ("ERR",  "#1F0F0F", "#FF8A7A"),
+            _         => ("PLAN", "#0D1829", "#80B8FF"),
+        };
+
         return new QueryHistoryItemViewModel
         {
             Id = entry.Id,
@@ -34,7 +47,10 @@ public sealed class QueryHistoryItemViewModel
             Duration = entry.Duration is null ? "-" : $"{entry.Duration.Value.TotalMilliseconds:N0} ms",
             RowCount = entry.RowCount is null ? "-" : entry.RowCount.Value.ToString("N0"),
             Status = entry.Status,
-            ErrorMessage = entry.ErrorMessage ?? string.Empty
+            ErrorMessage = entry.ErrorMessage ?? string.Empty,
+            StatusBadgeText = badgeText,
+            StatusBadgeBackground = badgeBg,
+            StatusBadgeForeground = badgeFg,
         };
     }
 

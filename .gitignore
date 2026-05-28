@@ -35,6 +35,10 @@ logs/
 *.nupkg
 packages/
 
+## Superpowers brainstorm artifacts
+.superpowers/
+docs/superpowers/
+
 ## Publish output
 publish/
 *.app/
