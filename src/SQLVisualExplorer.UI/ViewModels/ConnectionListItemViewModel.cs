@@ -1,9 +1,13 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using SQLVisualExplorer.Domain.Models;
 
 namespace SQLVisualExplorer.UI.ViewModels;
 
-public sealed class ConnectionListItemViewModel
+public sealed partial class ConnectionListItemViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private bool _isPendingDelete;
+
     public Guid Id { get; init; }
 
     public Connection Connection { get; init; } = new();

@@ -38,6 +38,9 @@ packages/
 ## Superpowers brainstorm artifacts
 .superpowers/
 docs/superpowers/
+.impeccable/
+DESIGN.md
+PRODUCT.md
 
 ## Publish output
 publish/

@@ -8,6 +8,10 @@
         MinWidth="980"
         MinHeight="640"
         Background="#101418">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Return" Command="{Binding RunQueryCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+Return" Command="{Binding ExplainAnalyzeQueryCommand}" />
+  </Window.KeyBindings>
   <Window.Styles>
     <Style Selector="TextBlock">
       <Setter Property="Foreground" Value="#E7ECEF" />
@@ -76,29 +80,57 @@
                      VerticalAlignment="Center" />
         </StackPanel>
 
-        <Border Grid.Column="1"
-                Width="280"
-                Height="34"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Background="#151C22"
-                BorderBrush="#2A3640"
-                BorderThickness="1"
-                CornerRadius="6">
-          <ComboBox ItemsSource="{Binding Connections}"
-                    SelectedItem="{Binding SelectedConnection}"
-                    Background="Transparent"
-                    BorderBrush="Transparent"
-                    HorizontalAlignment="Stretch"
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    PlaceholderText="No connection selected">
-            <ComboBox.ItemTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding Name}" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-        </Border>
+                    Spacing="6">
+          <Border Width="240"
+                  Height="34"
+                  Background="#151C22"
+                  BorderBrush="#2A3640"
+                  BorderThickness="1"
+                  CornerRadius="6">
+            <ComboBox ItemsSource="{Binding Connections}"
+                      SelectedItem="{Binding SelectedConnection}"
+                      Background="Transparent"
+                      BorderBrush="Transparent"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Center"
+                      PlaceholderText="No connection selected">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Name}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Border>
+          <Border Height="34"
+                  Background="#151C22"
+                  BorderBrush="#2A3640"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  IsVisible="{Binding SelectedConnection, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <Grid ColumnDefinitions="Auto,160" VerticalAlignment="Center" Margin="8,0">
+              <Viewbox Width="11" Height="11" Margin="0,0,5,0">
+                <Path Data="M3,8 H13 V14 H3 Z M5,8 V5.5 A3,3,0,0,1,11,5.5 V8"
+                      Stroke="#6F7E89"
+                      StrokeThickness="1.4"
+                      StrokeLineCap="Round"
+                      Fill="Transparent" />
+              </Viewbox>
+              <TextBox Grid.Column="1"
+                       Text="{Binding SelectedConnectionPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       PasswordChar="*"
+                       Watermark="password"
+                       FontSize="12"
+                       Background="Transparent"
+                       BorderBrush="Transparent"
+                       Foreground="#C6D0D8"
+                       MinHeight="0" />
+            </Grid>
+          </Border>
+        </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
           <Button Width="34" Height="34" Padding="0" Background="#151C22" BorderBrush="#2A3640" CornerRadius="6">
@@ -190,20 +222,12 @@
             <TextBlock Text="SQL Editor" FontSize="14" FontWeight="SemiBold" />
             <Border Grid.Row="1"
                     Margin="0,12,0,0"
-                    Background="#0F1419"
+                    Background="#0A0F13"
                     BorderBrush="#26313A"
                     BorderThickness="1"
                     CornerRadius="6"
-                    Padding="14">
-              <TextBox Text="{Binding SqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                       AcceptsReturn="True"
-                       TextWrapping="Wrap"
-                       FontFamily="Menlo, Consolas, monospace"
-                       FontSize="13"
-                       Background="Transparent"
-                       BorderBrush="Transparent"
-                       Foreground="#CFE3F2"
-                       Watermark="select * from table_name limit 100;" />
+                    ClipToBounds="True">
+              <controls:SqlEditorControl SqlText="{Binding SqlText, Mode=TwoWay}" />
             </Border>
           </Grid>
         </Border>
@@ -418,15 +442,6 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
-            <Border Height="1" Background="#26313A" />
-            <TextBlock Text="Session Password" FontSize="14" FontWeight="SemiBold" />
-            <TextBlock Text="Used only for Run in this session. It is not saved."
-                       TextWrapping="Wrap"
-                       FontSize="12"
-                       Foreground="#91A0AD" />
-            <TextBox Text="{Binding SelectedConnectionPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     PasswordChar="*"
-                     Watermark="Password for selected connection" />
           </StackPanel>
         </Border>
       </Grid>
@@ -543,7 +558,8 @@
                                    FontSize="12"
                                    Foreground="#91A0AD" />
 
-                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                              IsVisible="{Binding IsPendingDelete, Converter={x:Static BoolConverters.Not}}">
                           <TextBlock Text="{Binding Database}"
                                      FontSize="12"
                                      Foreground="#C6D0D8"
@@ -556,13 +572,6 @@
                                   Command="{Binding DataContext.SelectConnectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                   CommandParameter="{Binding}" />
                           <Button Grid.Column="2"
-                                  Content="Edit"
-                                  Height="28"
-                                  Padding="10,0"
-                                  CornerRadius="5"
-                                  Background="#17212A"
-                                  BorderBrush="#2A3640" />
-                          <Button Grid.Column="3"
                                   Content="Delete"
                                   Height="28"
                                   Padding="10,0"
@@ -570,7 +579,33 @@
                                   Background="Transparent"
                                   BorderBrush="#3A2020"
                                   Foreground="#FF8A7A"
+                                  Command="{Binding DataContext.RequestDeleteConnectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                              IsVisible="{Binding IsPendingDelete}">
+                          <TextBlock Text="Delete this connection?"
+                                     FontSize="12"
+                                     Foreground="#91A0AD"
+                                     VerticalAlignment="Center" />
+                          <Button Grid.Column="1"
+                                  Content="Confirm delete"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Background="Transparent"
+                                  BorderBrush="#3A2020"
+                                  Foreground="#FF8A7A"
                                   Command="{Binding DataContext.DeleteConnectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                          <Button Grid.Column="2"
+                                  Content="Cancel"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Background="#17212A"
+                                  BorderBrush="#2A3640"
+                                  Command="{Binding DataContext.CancelDeleteConnectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                   CommandParameter="{Binding}" />
                         </Grid>
                       </StackPanel>
@@ -674,6 +709,36 @@
         </Grid>
       </Border>
 
+      <Border Grid.Row="1"
+              Grid.RowSpan="2"
+              Classes="panel"
+              IsVisible="{Binding IsCompareVisible}">
+        <Grid RowDefinitions="*,Auto,*">
+          <StackPanel Grid.Row="1" Spacing="14" HorizontalAlignment="Center" MaxWidth="420">
+            <Viewbox Width="36" Height="36" HorizontalAlignment="Center">
+              <Path Data="M2,5 H11 L9,3 M9,7 L11,5 M14,11 H5 L7,9 M7,13 L5,11"
+                    Stroke="#2A3640"
+                    StrokeThickness="1.3"
+                    StrokeLineCap="Round"
+                    Fill="Transparent" />
+            </Viewbox>
+            <TextBlock Text="Query comparison — coming in v0.3"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="#C6D0D8"
+                       HorizontalAlignment="Center" />
+            <TextBlock TextWrapping="Wrap"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       FontSize="13"
+                       Foreground="#6F7E89"
+                       LineHeight="20">
+              Run two queries side by side, compare their execution plans, and measure the performance difference. Export a standalone HTML report to share with teammates.
+            </TextBlock>
+          </StackPanel>
+        </Grid>
+      </Border>
+
       <Border Grid.Row="2" Classes="panel" IsVisible="{Binding IsWorkspaceVisible}">
         <Grid RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto">
@@ -686,27 +751,34 @@
           </Grid>
           <Grid Grid.Row="1"
                 Margin="0,12,0,0"
-                RowDefinitions="36,*">
-            <Border Background="#0F1419" BorderBrush="#26313A" BorderThickness="0,0,0,1">
+                RowDefinitions="Auto,*">
+            <Border Background="#0F1419"
+                    BorderBrush="#26313A"
+                    BorderThickness="0,0,0,1">
               <TextBlock Text="{Binding ResultHeaderText}"
                          VerticalAlignment="Center"
-                         Margin="12,0"
+                         Margin="12,6"
                          FontFamily="Menlo, Consolas, monospace"
                          FontSize="12"
-                         Foreground="#91A0AD" />
+                         Foreground="#91A0AD"
+                         IsVisible="{Binding ResultHeaderText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </Border>
 
-            <ScrollViewer Grid.Row="1">
+            <ScrollViewer Grid.Row="1"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto">
               <ItemsControl ItemsSource="{Binding ResultRows}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border Padding="12,8"
+                    <Border Padding="0,0,0,0"
                             BorderBrush="#202B33"
                             BorderThickness="0,0,0,1">
                       <TextBlock Text="{Binding DisplayText}"
                                  FontFamily="Menlo, Consolas, monospace"
                                  FontSize="12"
-                                 Foreground="#CFE3F2" />
+                                 Foreground="#CFE3F2"
+                                 Padding="12,5"
+                                 TextWrapping="NoWrap" />
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>

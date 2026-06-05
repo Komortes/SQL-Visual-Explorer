@@ -25,6 +25,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isHistoryVisible;
 
     [ObservableProperty]
+    private bool _isCompareVisible;
+
+    [ObservableProperty]
     private bool _isWorkspaceVisible = true;
 
     [ObservableProperty]
@@ -174,6 +177,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<ConnectionListItemViewModel> Connections { get; } = [];
 
+    public ObservableCollection<string> ResultColumns { get; } = [];
+
     public ObservableCollection<QueryResultRowViewModel> ResultRows { get; } = [];
 
     public ObservableCollection<PlanNodeVisualItemViewModel> VisualPlanNodes { get; } = [];
@@ -201,7 +206,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         IsConnectionsVisible = value.Code == "DB";
         IsHistoryVisible = value.Code == "HS";
-        IsWorkspaceVisible = !IsConnectionsVisible && !IsHistoryVisible;
+        IsCompareVisible = value.Code == "CP";
+        IsWorkspaceVisible = !IsConnectionsVisible && !IsHistoryVisible && !IsCompareVisible;
         IsPlanVisible = value.Code == "PL";
         IsEditorVisible = IsWorkspaceVisible && !IsPlanVisible;
 
@@ -239,15 +245,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void RequestDeleteConnection(ConnectionListItemViewModel item) =>
+        item.IsPendingDelete = true;
+
+    [RelayCommand]
+    private void CancelDeleteConnection(ConnectionListItemViewModel item) =>
+        item.IsPendingDelete = false;
+
+    [RelayCommand]
     private async Task DeleteConnectionAsync(ConnectionListItemViewModel item)
     {
+        item.IsPendingDelete = false;
         await _connectionService.DeleteConnectionAsync(item.Id);
         Connections.Remove(item);
 
         if (SelectedConnection?.Id == item.Id)
-        {
             SelectedConnection = Connections.FirstOrDefault();
-        }
 
         ConnectionStatusMessage = $"Deleted \"{item.Name}\".";
     }
@@ -361,6 +374,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         QueryStatusMessage = "Running query...";
+        ResultColumns.Clear();
         ResultRows.Clear();
         VisualPlanNodes.Clear();
         PlanIssues.Clear();
@@ -375,16 +389,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             var result = await _queryExecutionService.ExecuteAsync(CreateExecutableConnection(), SqlText);
             stopwatch.Stop();
-            var columns = result.Columns;
 
-            ResultHeaderText = columns.Count == 0
-                ? "No columns returned"
-                : string.Join("    ", columns);
+            foreach (var col in result.Columns)
+                ResultColumns.Add(col);
 
-            foreach (var row in result.Rows)
-            {
-                ResultRows.Add(QueryResultRowViewModel.FromValues(row, columns));
-            }
+            BuildAlignedResultTable(result.Columns, result.Rows, ResultRows, out var header);
+            ResultHeaderText = header;
 
             QueryStatusMessage = $"Returned {result.RowCount} row(s) in {result.Duration.TotalMilliseconds:N0} ms.";
             await RecordHistoryAsync(true, result.Duration, result.RowCount, null);
@@ -392,7 +402,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception exception)
         {
             stopwatch.Stop();
-            QueryStatusMessage = exception.Message;
+            QueryStatusMessage = GetFriendlyErrorMessage(exception);
             await RecordHistoryAsync(false, stopwatch.Elapsed, null, exception.Message);
         }
     }
@@ -430,6 +440,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
 
         QueryStatusMessage = runningStatus;
+        ResultColumns.Clear();
         ResultRows.Clear();
         VisualPlanNodes.Clear();
         GraphEdges.Clear();
@@ -449,30 +460,32 @@ public sealed partial class MainWindowViewModel : ObservableObject
             stopwatch.Stop();
 
             var flattenedNodes = FlattenPlan(plan.Root).ToList();
-            var columns = new[] { "depth", "operation", "cost", "estimated_rows", "actual_time_ms", "actual_rows" };
-            ResultHeaderText = string.Join("    ", columns);
+            IReadOnlyList<string> columns = ["depth", "operation", "cost", "estimated_rows", "actual_time_ms", "actual_rows"];
+            foreach (var col in columns)
+                ResultColumns.Add(col);
             var issueItemsByNodeId = BuildIssueIndex(plan.Issues);
+
+            var planRows = flattenedNodes.Select(item => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>
+            {
+                ["depth"] = item.Depth,
+                ["operation"] = $"{new string(' ', item.Depth * 2)}{item.Node.Label}",
+                ["cost"] = item.Node.TotalCost,
+                ["estimated_rows"] = item.Node.EstimatedRows,
+                ["actual_time_ms"] = item.Node.ActualTotalTimeMs,
+                ["actual_rows"] = item.Node.ActualRows
+            }).ToList();
+
+            BuildAlignedResultTable(columns, planRows, ResultRows, out var planHeader);
+            ResultHeaderText = planHeader;
 
             foreach (var item in flattenedNodes)
             {
-            VisualPlanNodes.Add(PlanNodeVisualItemViewModel.FromNode(
+                VisualPlanNodes.Add(PlanNodeVisualItemViewModel.FromNode(
                     item.Node,
                     item.Depth,
                     plan.Root?.TotalCost,
                     plan.Root?.ActualTotalTimeMs,
                     issueItemsByNodeId.GetValueOrDefault(item.Node.Id) ?? []));
-
-                ResultRows.Add(QueryResultRowViewModel.FromValues(
-                    new Dictionary<string, object?>
-                    {
-                        ["depth"] = item.Depth,
-                        ["operation"] = $"{new string(' ', item.Depth * 2)}{item.Node.Label}",
-                        ["cost"] = item.Node.TotalCost,
-                        ["estimated_rows"] = item.Node.EstimatedRows,
-                        ["actual_time_ms"] = item.Node.ActualTotalTimeMs,
-                        ["actual_rows"] = item.Node.ActualRows
-                    },
-                    columns));
             }
 
             foreach (var issue in plan.Issues)
@@ -494,11 +507,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception exception)
         {
             stopwatch.Stop();
-            QueryStatusMessage = exception.Message;
+            var friendlyMessage = GetFriendlyErrorMessage(exception);
+            QueryStatusMessage = friendlyMessage;
             PlanSummaryText = $"{label} failed.";
             PlanTreeHeaderText = "Plan Tree";
             SelectedPlanNodeTitle = "No plan node selected.";
-            SelectedPlanNodeDetails = exception.Message;
+            SelectedPlanNodeDetails = friendlyMessage;
             await RecordHistoryAsync(false, stopwatch.Elapsed, null, exception.Message);
         }
     }
@@ -579,6 +593,41 @@ public sealed partial class MainWindowViewModel : ObservableObject
         });
 
         HistoryItems.Insert(0, QueryHistoryItemViewModel.FromEntry(entry));
+    }
+
+    private static string GetFriendlyErrorMessage(Exception exception)
+    {
+        var msg = exception.Message;
+
+        if (msg.Contains("password authentication failed", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Access denied for user", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Login failed", StringComparison.OrdinalIgnoreCase))
+            return "Authentication failed. Check the username and password for this connection.";
+
+        if (msg.Contains("No such host", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Connection refused", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Unable to connect", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("nodename nor servname", StringComparison.OrdinalIgnoreCase))
+            return "Cannot reach the database server. Check the host and port, and ensure the server is running.";
+
+        if (msg.Contains("SSL", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("certificate", StringComparison.OrdinalIgnoreCase))
+            return "SSL connection failed. Try changing the SSL setting for this connection.";
+
+        if (msg.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            return "The query timed out. The database may be under load, or the query needs optimization.";
+
+        if (msg.Contains("syntax error", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("You have an error in your SQL", StringComparison.OrdinalIgnoreCase))
+            return $"SQL syntax error: {msg.Split('\n')[0].Trim()}";
+
+        if (msg.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Unknown column", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Unknown table", StringComparison.OrdinalIgnoreCase))
+            return $"Object not found: {msg.Split('\n')[0].Trim()}";
+
+        return $"Query failed: {msg.Split('\n')[0].Trim()}";
     }
 
     private Connection CreateExecutableConnection()
@@ -701,6 +750,45 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         return $"Root: {root.Label}\nNodes: {nodeCount}\nIssues: {issueCount}\nEstimated cost: {cost}\nEstimated rows: {rows}\nActual time: {actualTime}";
     }
+
+    private static void BuildAlignedResultTable(
+        IReadOnlyList<string> columns,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
+        System.Collections.ObjectModel.ObservableCollection<QueryResultRowViewModel> target,
+        out string headerText)
+    {
+        if (columns.Count == 0)
+        {
+            headerText = "No columns returned";
+            return;
+        }
+
+        var formatted = rows.Select(row =>
+            columns.Select(col => FormatCellValue(row.GetValueOrDefault(col))).ToArray()
+        ).ToList();
+
+        var widths = columns.Select((col, i) =>
+            Math.Max(col.Length, formatted.Count == 0 ? 0 : formatted.Max(r => r[i].Length))
+        ).ToArray();
+
+        headerText = string.Join("  ", columns.Select((col, i) => col.PadRight(widths[i])));
+
+        foreach (var (raw, fmtRow) in rows.Zip(formatted))
+        {
+            var displayText = string.Join("  ", fmtRow.Select((val, i) => val.PadRight(widths[i])));
+            target.Add(new QueryResultRowViewModel { Values = raw, DisplayText = displayText });
+        }
+    }
+
+    private static string FormatCellValue(object? value) => value switch
+    {
+        null => "NULL",
+        DateTime dt => dt.ToString("u"),
+        DateTimeOffset dto => dto.ToString("u"),
+        decimal d => d.ToString("N2"),
+        double d => d.ToString("N2"),
+        _ => value.ToString() ?? string.Empty,
+    };
 
     private static Dictionary<Guid, IReadOnlyList<PlanIssueItemViewModel>> BuildIssueIndex(IReadOnlyList<PlanIssue> issues)
     {
