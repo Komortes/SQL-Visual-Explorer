@@ -748,7 +748,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     partial void OnSelectedConnectionChanged(ConnectionListItemViewModel? value)
     {
-        SelectedConnectionPassword = string.Empty;
+        SelectedConnectionPassword = value?.Connection?.Password ?? string.Empty;
     }
 
     [RelayCommand]
@@ -1105,6 +1105,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     private bool CanExportCompare() => CompareHasResults;
+
+    [RelayCommand]
+    private void FormatSql()
+    {
+        if (!string.IsNullOrWhiteSpace(SqlText))
+            SqlText = SqlFormatter.Format(SqlText);
+    }
 
     private static void PopulateComparePlanNodes(
         ObservableCollection<PlanNodeVisualItemViewModel> target,

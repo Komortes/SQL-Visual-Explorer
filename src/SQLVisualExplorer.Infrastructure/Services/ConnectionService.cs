@@ -8,7 +8,10 @@ using SQLVisualExplorer.Infrastructure.Drivers;
 
 namespace SQLVisualExplorer.Infrastructure.Services;
 
-public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatabaseDriver> drivers) : IConnectionService
+public sealed class ConnectionService(
+    AppDbContext dbContext,
+    IEnumerable<IDatabaseDriver> drivers,
+    ISecretStore secretStore) : IConnectionService
 {
     public async Task<IReadOnlyList<Connection>> GetConnectionsAsync(CancellationToken cancellationToken = default)
     {
@@ -17,7 +20,13 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
             .OrderBy(connection => connection.Name)
             .ToListAsync(cancellationToken);
 
-        return entities.Select(ToDomain).ToList();
+        var results = new List<Connection>(entities.Count);
+        foreach (var entity in entities)
+        {
+            var password = await secretStore.LoadAsync(SecretKey(entity.Id), cancellationToken);
+            results.Add(ToDomain(entity, password));
+        }
+        return results;
     }
 
     public async Task<Connection?> GetConnectionAsync(Guid id, CancellationToken cancellationToken = default)
@@ -26,7 +35,9 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
             .AsNoTracking()
             .FirstOrDefaultAsync(connection => connection.Id == id.ToString(), cancellationToken);
 
-        return entity is null ? null : ToDomain(entity);
+        if (entity is null) return null;
+        var password = await secretStore.LoadAsync(SecretKey(entity.Id), cancellationToken);
+        return ToDomain(entity, password);
     }
 
     public async Task<Connection> CreateConnectionAsync(CreateConnectionRequest request, CancellationToken cancellationToken = default)
@@ -42,7 +53,11 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
         dbContext.Connections.Add(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToDomain(entity);
+        var password = NormalizeOptionalText(request.Password);
+        if (password is not null)
+            await secretStore.SaveAsync(SecretKey(entity.Id), password, cancellationToken);
+
+        return ToDomain(entity, password);
     }
 
     public async Task<Connection?> UpdateConnectionAsync(
@@ -53,22 +68,29 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
         var entity = await dbContext.Connections
             .FirstOrDefaultAsync(connection => connection.Id == id.ToString(), cancellationToken);
 
-        if (entity is null)
-        {
-            return null;
-        }
+        if (entity is null) return null;
 
         Apply(entity, request);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToDomain(entity);
+        var password = NormalizeOptionalText(request.Password);
+        if (password is not null)
+            await secretStore.SaveAsync(SecretKey(entity.Id), password, cancellationToken);
+        else
+            await secretStore.DeleteAsync(SecretKey(entity.Id), cancellationToken);
+
+        return ToDomain(entity, password);
     }
 
     public async Task<bool> DeleteConnectionAsync(Guid id, CancellationToken cancellationToken = default)
     {
+        var idStr = id.ToString();
         var rowsDeleted = await dbContext.Connections
-            .Where(connection => connection.Id == id.ToString())
+            .Where(connection => connection.Id == idStr)
             .ExecuteDeleteAsync(cancellationToken);
+
+        if (rowsDeleted > 0)
+            await secretStore.DeleteAsync(SecretKey(idStr), cancellationToken);
 
         return rowsDeleted > 0;
     }
@@ -121,7 +143,7 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
         entity.UseSsl = request.UseSsl;
     }
 
-    private static Connection ToDomain(ConnectionEntity entity)
+    private static Connection ToDomain(ConnectionEntity entity, string? password = null)
     {
         return new Connection
         {
@@ -132,6 +154,7 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
             Port = entity.Port,
             Database = entity.Database,
             Username = entity.Username,
+            Password = password,
             UseSsl = entity.UseSsl,
             CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(entity.CreatedAt, DateTimeKind.Utc)),
             LastUsedAt = entity.LastUsed is null
@@ -140,8 +163,8 @@ public sealed class ConnectionService(AppDbContext dbContext, IEnumerable<IDatab
         };
     }
 
-    private static string? NormalizeOptionalText(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
+    private static string? NormalizeOptionalText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string SecretKey(string id) => $"connection/{id}";
 }

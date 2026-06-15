@@ -12,6 +12,7 @@
     <KeyBinding Gesture="Ctrl+Return" Command="{Binding RunQueryCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Return" Command="{Binding ExplainAnalyzeQueryCommand}" />
     <KeyBinding Gesture="Ctrl+OemQuestion" Command="{Binding OpenSnippetsPopupCommand}" />
+    <KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding FormatSqlCommand}" />
   </Window.KeyBindings>
   <Window.Styles>
     <Style Selector="TextBlock">
@@ -304,6 +305,12 @@
                   Padding="16,0"
                   CornerRadius="6"
                   Command="{Binding ExplainAnalyzeQueryCommand}" />
+          <Button Content="Format"
+                  Height="34"
+                  Padding="16,0"
+                  CornerRadius="6"
+                  ToolTip.Tip="Format SQL (Ctrl+Shift+F)"
+                  Command="{Binding FormatSqlCommand}" />
         </StackPanel>
       </Grid>
 
@@ -682,7 +689,7 @@
                        FontSize="12"
                        Foreground="#91A0AD"
                        TextWrapping="Wrap" />
-            <TextBlock Text="Passwords are not stored yet; Keychain support will be added separately."
+            <TextBlock Text="Passwords are stored in the OS keychain (Windows DPAPI / macOS Keychain / Linux secret-tool)."
                        FontSize="11"
                        Foreground="#6F7E89"
                        TextWrapping="Wrap" />

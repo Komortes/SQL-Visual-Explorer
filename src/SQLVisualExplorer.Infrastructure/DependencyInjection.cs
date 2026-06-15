@@ -28,9 +28,12 @@ public static class DependencyInjection
         services.AddSingleton<IExplainParser, PostgreSqlExplainParser>();
         services.AddSingleton<IExplainParser, MySqlExplainParser>();
         services.AddSingleton<IExplainParser, SQLiteExplainParser>();
+        services.AddSingleton<IExplainParser, MsSqlExplainParser>();
+        services.AddSingleton<ISecretStore, OsSecretStore>();
         services.AddSingleton<IDatabaseDriver, PostgreSqlDriver>();
         services.AddSingleton<IDatabaseDriver, MySqlDriver>();
         services.AddSingleton<IDatabaseDriver, SQLiteDriver>();
+        services.AddSingleton<IDatabaseDriver, MsSqlDriver>();
 
         return services;
     }

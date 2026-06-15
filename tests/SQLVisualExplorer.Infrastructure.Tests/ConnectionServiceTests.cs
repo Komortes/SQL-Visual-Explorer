@@ -171,7 +171,14 @@ public sealed class ConnectionServiceTests
 
         public ConnectionService CreateService(params IDatabaseDriver[] drivers)
         {
-            return new ConnectionService(new AppDbContext(Options), drivers);
+            return new ConnectionService(new AppDbContext(Options), drivers, new NullSecretStore());
+        }
+
+        private sealed class NullSecretStore : SQLVisualExplorer.Application.Services.ISecretStore
+        {
+            public Task SaveAsync(string key, string secret, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task<string?> LoadAsync(string key, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+            public Task DeleteAsync(string key, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         public async ValueTask DisposeAsync()
