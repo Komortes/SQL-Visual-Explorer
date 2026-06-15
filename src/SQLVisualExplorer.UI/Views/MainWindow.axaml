@@ -337,7 +337,7 @@
 
         <Border Classes="panel"
                 IsVisible="{Binding IsPlanVisible}">
-          <Grid RowDefinitions="Auto,*">
+          <Grid RowDefinitions="Auto,*,Auto">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="{Binding PlanTreeHeaderText}" FontSize="14" FontWeight="SemiBold" />
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -368,6 +368,13 @@
                         Command="{Binding ZoomFitCommand}" />
                 <Button Content="Export HTML" Height="26" Padding="10,0" CornerRadius="5"
                         Command="{Binding ExportPlanToHtmlCommand}" />
+                <Button Content="AI Advisor" Height="26" Padding="10,0" CornerRadius="5"
+                        Command="{Binding RunAdvisorCommand}"
+                        IsEnabled="{Binding !IsAdvisorRunning}"
+                        ToolTip.Tip="Ask AI to analyze SQL and plan (configure key with ⚙)" />
+                <Button Content="⚙" Width="26" Height="26" Padding="0" CornerRadius="5"
+                        Command="{Binding OpenAdvisorSettingsCommand}"
+                        ToolTip.Tip="AI Advisor settings" />
                 <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
                   <Border Width="8" Height="8" CornerRadius="4" Background="#7BD88F" VerticalAlignment="Center" />
                   <TextBlock Text="OK" FontSize="10" Foreground="#91A0AD" VerticalAlignment="Center"/>
@@ -493,6 +500,26 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
+
+            <!-- AI Advisor output panel (Row 2 of outer plan Grid) -->
+            <Border Grid.Row="2"
+                    IsVisible="{Binding IsAdvisorPanelVisible}"
+                    Background="#0D1829" BorderBrush="#1E3A5F" BorderThickness="0,1,0,0"
+                    MinHeight="120" MaxHeight="300">
+              <Grid RowDefinitions="Auto,*">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,4,4,0">
+                  <TextBlock Text="AI Advisor" FontWeight="SemiBold" Foreground="#80B8FF" Margin="12,8"/>
+                  <Button Grid.Column="1" Content="✕" Width="26" Height="26" Padding="0"
+                          Command="{Binding CloseAdvisorPanelCommand}"/>
+                </Grid>
+                <ScrollViewer Grid.Row="1">
+                  <TextBlock Text="{Binding AdvisorOutput}" TextWrapping="Wrap"
+                             Margin="12,4,12,12"
+                             FontFamily="Cascadia Code,Consolas,monospace"
+                             Foreground="#C8D8E8" FontSize="12"/>
+                </ScrollViewer>
+              </Grid>
+            </Border>
           </Grid>
         </Border>
 
@@ -1535,6 +1562,33 @@
           </ScrollViewer>
         </Grid>
       </Border>
+      <!-- AI Advisor Settings overlay -->
+      <Grid IsVisible="{Binding IsAdvisorSettingsVisible}" ZIndex="200">
+        <Rectangle Fill="#CC000000"/>
+        <Border Background="#1A2332" BorderBrush="#2A3A4A" BorderThickness="1"
+                CornerRadius="12" Padding="24" Width="480"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+          <StackPanel Spacing="8">
+            <TextBlock Text="AI Advisor Settings" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <TextBlock Text="API Key" FontSize="12" Foreground="#91A0AD"/>
+            <TextBox Text="{Binding AdvisorApiKey}" PasswordChar="•"
+                     Watermark="sk-... or your API key"/>
+            <TextBlock Text="Base URL (leave blank for OpenAI default)" FontSize="12"
+                       Foreground="#91A0AD" Margin="0,8,0,0"/>
+            <TextBox Text="{Binding AdvisorEndpoint}"
+                     Watermark="https://api.openai.com/v1"/>
+            <TextBlock Text="Model" FontSize="12" Foreground="#91A0AD" Margin="0,8,0,0"/>
+            <TextBox Text="{Binding AdvisorModel}" Watermark="gpt-4o-mini"/>
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        HorizontalAlignment="Right" Margin="0,16,0,0">
+              <Button Content="Cancel" Command="{Binding CloseAdvisorSettingsCommand}"
+                      Padding="16,8"/>
+              <Button Content="Save" Command="{Binding SaveAdvisorSettingsCommand}"
+                      Padding="16,8"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Grid>
     </Panel>
   </Grid>
 </Window>

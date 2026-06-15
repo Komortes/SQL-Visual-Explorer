@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddSingleton<IDatabaseDriver, MySqlDriver>();
         services.AddSingleton<IDatabaseDriver, SQLiteDriver>();
         services.AddSingleton<IDatabaseDriver, MsSqlDriver>();
+        services.AddSingleton<IQueryAdvisorService, OpenAiAdvisorService>();
 
         return services;
     }

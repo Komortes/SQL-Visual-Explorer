@@ -15,6 +15,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IExplainAnalyzeService _explainAnalyzeService;
     private readonly IHistoryService _historyService;
     private readonly ISnippetService _snippetService;
+    private readonly IQueryAdvisorService? _advisorService;
+    private readonly ISecretStore? _secretStore;
+    private IReadOnlyList<PlanIssue> _currentPlanIssues = [];
 
     [ObservableProperty]
     private ShellNavigationItemViewModel _selectedNavigationItem;
@@ -212,6 +215,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _compareHasResults;
 
     [ObservableProperty]
+    private string _advisorApiKey = string.Empty;
+
+    [ObservableProperty]
+    private string _advisorEndpoint = string.Empty;
+
+    [ObservableProperty]
+    private string _advisorModel = string.Empty;
+
+    [ObservableProperty]
+    private bool _isAdvisorSettingsVisible;
+
+    [ObservableProperty]
+    private string _advisorOutput = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunAdvisorCommand))]
+    private bool _isAdvisorRunning;
+
+    [ObservableProperty]
+    private bool _isAdvisorPanelVisible;
+
+    [ObservableProperty]
     private ComparePlanResultViewModel? _compareResultA;
 
     [ObservableProperty]
@@ -241,13 +266,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IQueryExecutionService queryExecutionService,
         IExplainAnalyzeService explainAnalyzeService,
         IHistoryService historyService,
-        ISnippetService snippetService)
+        ISnippetService snippetService,
+        IQueryAdvisorService? advisorService = null,
+        ISecretStore? secretStore = null)
     {
         _connectionService = connectionService;
         _queryExecutionService = queryExecutionService;
         _explainAnalyzeService = explainAnalyzeService;
         _historyService = historyService;
         _snippetService = snippetService;
+        _advisorService = advisorService;
+        _secretStore = secretStore;
 
         NavigationItems =
         [
@@ -645,6 +674,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 PlanIssues.Add(PlanIssueItemViewModel.FromIssue(issue));
             }
 
+            _currentPlanIssues = plan.Issues;
             PlanSummaryText = BuildPlanSummary(plan.Root, flattenedNodes.Count, plan.Issues.Count);
             UpdateIssuesBadge(plan.Issues);
             PlanTreeHeaderText = $"Plan ({flattenedNodes.Count} node(s))";
@@ -1507,6 +1537,78 @@ public sealed partial class MainWindowViewModel : ObservableObject
         port = parsedPort;
         return true;
     }
+
+    [RelayCommand]
+    private void OpenAdvisorSettings() => IsAdvisorSettingsVisible = true;
+
+    [RelayCommand]
+    private void CloseAdvisorSettings() => IsAdvisorSettingsVisible = false;
+
+    [RelayCommand]
+    private async Task SaveAdvisorSettingsAsync()
+    {
+        if (_secretStore is null) return;
+        await _secretStore.SaveAsync("advisor-api-key", AdvisorApiKey);
+        await _secretStore.SaveAsync("advisor-endpoint", AdvisorEndpoint);
+        await _secretStore.SaveAsync("advisor-model", AdvisorModel);
+        IsAdvisorSettingsVisible = false;
+        RunAdvisorCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private async Task LoadAdvisorSettingsAsync()
+    {
+        if (_secretStore is null) return;
+        AdvisorApiKey    = await _secretStore.LoadAsync("advisor-api-key")    ?? string.Empty;
+        AdvisorEndpoint  = await _secretStore.LoadAsync("advisor-endpoint")   ?? string.Empty;
+        AdvisorModel     = await _secretStore.LoadAsync("advisor-model")      ?? string.Empty;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunAdvisor))]
+    private async Task RunAdvisorAsync()
+    {
+        if (_advisorService is null) return;
+        IsAdvisorRunning = true;
+        AdvisorOutput    = string.Empty;
+        try
+        {
+            var dbType = SelectedConnection?.DatabaseType.ToString() ?? "Unknown";
+            var result = await _advisorService.AnalyzeAsync(SqlText, dbType, _currentPlanIssues);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(result.Summary);
+            if (result.Suggestions.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Suggestions:");
+                foreach (var s in result.Suggestions)
+                    sb.AppendLine($"- {s}");
+            }
+            if (!string.IsNullOrWhiteSpace(result.RewrittenSql))
+            {
+                sb.AppendLine();
+                sb.AppendLine("Rewritten SQL:");
+                sb.AppendLine(result.RewrittenSql);
+            }
+
+            AdvisorOutput       = sb.ToString().TrimEnd();
+            IsAdvisorPanelVisible = true;
+        }
+        catch (Exception ex)
+        {
+            AdvisorOutput = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsAdvisorRunning = false;
+        }
+    }
+
+    private bool CanRunAdvisor() =>
+        !string.IsNullOrWhiteSpace(SqlText) && !IsAdvisorRunning && (_advisorService?.IsConfigured == true);
+
+    [RelayCommand]
+    private void CloseAdvisorPanel() => IsAdvisorPanelVisible = false;
 
     private sealed class DesignConnectionService : IConnectionService
     {
