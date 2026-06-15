@@ -59,7 +59,7 @@ public sealed class SQLiteExplainParser : IExplainParser
     {
         var result = new List<(int, int, string)>();
 
-        foreach (var line in output.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries))
+        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = line.Split('|', 3);
             if (parts.Length < 3) continue;

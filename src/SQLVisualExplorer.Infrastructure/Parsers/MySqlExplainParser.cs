@@ -40,7 +40,7 @@ public sealed class MySqlExplainParser : IExplainParser
     private static ExecutionPlan ParseTextExplainAnalyze(string explainOutput)
     {
         var lines = explainOutput
-            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
 
         return new ExecutionPlan
