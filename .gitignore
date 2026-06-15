@@ -42,6 +42,14 @@ docs/superpowers/
 DESIGN.md
 PRODUCT.md
 
+## Claude Code local settings
+.claude/
+
+## Environment / secrets
+.env
+.env.*
+!.env.example
+
 ## Publish output
 publish/
 *.app/

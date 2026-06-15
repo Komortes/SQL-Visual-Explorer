@@ -1,3 +1,5 @@
+using Avalonia.Media;
+
 namespace SQLVisualExplorer.UI.ViewModels;
 
 public sealed class QueryResultRowViewModel
@@ -5,27 +7,31 @@ public sealed class QueryResultRowViewModel
     public IReadOnlyDictionary<string, object?> Values { get; init; } =
         new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-    public string DisplayText { get; init; } = string.Empty;
+    public IReadOnlyList<ResultCellViewModel> Cells { get; init; } = [];
+}
 
-    public static QueryResultRowViewModel FromValues(
-        IReadOnlyDictionary<string, object?> values,
-        IReadOnlyList<string> columns)
-    {
-        return new QueryResultRowViewModel
-        {
-            Values = values,
-            DisplayText = string.Join("    ", columns.Select(column => FormatValue(values.GetValueOrDefault(column))))
-        };
-    }
+public sealed class ResultCellViewModel
+{
+    public string Text { get; init; } = string.Empty;
 
-    private static string FormatValue(object? value)
-    {
-        return value switch
-        {
-            null => "NULL",
-            DateTime dateTime => dateTime.ToString("u"),
-            DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("u"),
-            _ => value.ToString() ?? string.Empty
-        };
-    }
+    public double Width { get; init; }
+
+    public bool IsNull { get; init; }
+
+    public IBrush Foreground => IsNull
+        ? new SolidColorBrush(Color.Parse("#4A5A66"))
+        : new SolidColorBrush(Color.Parse("#CFE3F2"));
+
+    public FontStyle FontStyle => IsNull ? FontStyle.Italic : FontStyle.Normal;
+}
+
+public sealed class ResultColumnViewModel
+{
+    public string Name { get; init; } = string.Empty;
+
+    public double Width { get; init; }
+
+    public string SortGlyph { get; init; } = string.Empty;
+
+    public string Header => string.IsNullOrEmpty(SortGlyph) ? Name : $"{Name} {SortGlyph}";
 }

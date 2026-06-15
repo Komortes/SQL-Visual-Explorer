@@ -19,6 +19,7 @@ public static class DependencyInjection
 
         services.AddScoped<ILocalDatabaseInitializer, LocalDatabaseInitializer>();
         services.AddScoped<IConnectionService, ConnectionService>();
+        services.AddScoped<ISnippetService, SnippetService>();
         services.AddScoped<IHistoryService, HistoryService>();
         services.AddScoped<IQueryExecutionService, QueryExecutionService>();
         services.AddScoped<IExplainAnalyzeService, ExplainAnalyzeService>();
@@ -26,8 +27,10 @@ public static class DependencyInjection
         services.AddScoped<IPlanAnalyzerService, PlanAnalyzerService>();
         services.AddSingleton<IExplainParser, PostgreSqlExplainParser>();
         services.AddSingleton<IExplainParser, MySqlExplainParser>();
+        services.AddSingleton<IExplainParser, SQLiteExplainParser>();
         services.AddSingleton<IDatabaseDriver, PostgreSqlDriver>();
         services.AddSingleton<IDatabaseDriver, MySqlDriver>();
+        services.AddSingleton<IDatabaseDriver, SQLiteDriver>();
 
         return services;
     }

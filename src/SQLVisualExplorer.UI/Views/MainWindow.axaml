@@ -48,6 +48,74 @@
     <Style Selector="ComboBox">
       <Setter Property="MinHeight" Value="34" />
     </Style>
+
+    <!-- Nav panel entrance: fades in when IsVisible becomes true -->
+    <Style Selector="Grid.content-view[IsVisible=true]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.20" FillMode="Forward" Easing="CubicEaseOut">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <Style Selector="Border.content-view[IsVisible=true]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.20" FillMode="Forward" Easing="CubicEaseOut">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- Nav button: smooth hover background via ContentPresenter transition -->
+    <Style Selector="Button.nav-item /template/ ContentPresenter">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <!-- Nav button: smooth opacity transition between active and inactive states -->
+    <Style Selector="Button.nav-item">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.15" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <!-- Ghost buttons in topbar: smooth border-area hover -->
+    <Style Selector="Button.topbar-action /template/ ContentPresenter">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <!-- List item entrance: fades in as items are added to collections -->
+    <Style Selector="Border.list-item">
+      <Style.Animations>
+        <Animation Duration="0:0:0.18" FillMode="Forward" Easing="CubicEaseOut">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="56,*" ColumnDefinitions="92,*">
@@ -133,11 +201,21 @@
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
-          <Button Width="34" Height="34" Padding="0" Background="#151C22" BorderBrush="#2A3640" CornerRadius="6">
-            <TextBlock Text="!" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Button>
-          <Button Width="34" Height="34" Padding="0" Background="#151C22" BorderBrush="#2A3640" CornerRadius="6">
-            <TextBlock Text="..." HorizontalAlignment="Center" VerticalAlignment="Center" />
+          <Button Width="34" Height="34" Padding="0"
+                  Background="#151C22" BorderBrush="#2A3640" CornerRadius="6"
+                  ToolTip.Tip="More actions">
+            <TextBlock Text="⋯" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Header="Save query as snippet"
+                          Command="{Binding SaveCurrentQueryAsSnippetCommand}" />
+                <MenuItem Header="Export results to CSV"
+                          Command="{Binding ExportResultsToCsvCommand}" />
+                <Separator />
+                <MenuItem Header="About SQL Visual Explorer"
+                          Command="{Binding ShowAboutCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
           </Button>
         </StackPanel>
       </Grid>
@@ -194,6 +272,20 @@
                     VerticalAlignment="Center"
                     Spacing="8"
                     IsVisible="{Binding IsWorkspaceVisible}">
+          <TextBlock Text="Running…"
+                     FontSize="12"
+                     Foreground="#91A0AD"
+                     VerticalAlignment="Center"
+                     IsVisible="{Binding IsBusy}" />
+          <Button Content="Cancel"
+                  Height="34"
+                  Padding="14,0"
+                  CornerRadius="6"
+                  Background="Transparent"
+                  BorderBrush="#3A2020"
+                  Foreground="#FF8A7A"
+                  IsVisible="{Binding IsBusy}"
+                  Command="{Binding CancelRunCommand}" />
           <Button Content="Run"
                   Height="34"
                   Padding="16,0"
@@ -213,6 +305,7 @@
       </Grid>
 
       <Grid Grid.Row="1"
+            Classes="content-view"
             ColumnDefinitions="2*,*"
             ColumnSpacing="16"
             IsVisible="{Binding IsWorkspaceVisible}">
@@ -240,11 +333,16 @@
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Border BorderBrush="#2A3640" BorderThickness="1" CornerRadius="5" ClipToBounds="True">
                   <StackPanel Orientation="Horizontal">
+                    <Button Content="Tree"
+                            Height="26"
+                            Padding="10,0"
+                            CornerRadius="0"
+                            Command="{Binding ShowPlanTableCommand}" />
                     <Button Content="Graph"
                             Height="26"
                             Padding="10,0"
                             CornerRadius="0"
-                            Command="{Binding ShowPlanTreeCommand}" />
+                            Command="{Binding ShowPlanGraphCommand}" />
                     <Button Content="Flame"
                             Height="26"
                             Padding="10,0"
@@ -269,10 +367,71 @@
               </StackPanel>
             </Grid>
 
+            <Grid Grid.Row="1"
+                  Margin="0,12,0,0"
+                  RowDefinitions="Auto,*"
+                  IsVisible="{Binding IsPlanTableVisible}">
+              <Grid ColumnDefinitions="*,84,108,96,40" Margin="9,0,9,6">
+                <TextBlock Text="Operation" FontSize="11" Foreground="#6F7E89" />
+                <TextBlock Grid.Column="1" Text="Cost" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Right" />
+                <TextBlock Grid.Column="2" Text="Rows" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Right" />
+                <TextBlock Grid.Column="3" Text="Time" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Right" />
+                <TextBlock Grid.Column="4" Text="⚠" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Center" />
+              </Grid>
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding VisualPlanNodes}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Padding="0"
+                              Margin="0,0,0,3"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
+                              Command="{Binding DataContext.SelectPlanNodeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding}">
+                        <Border Background="{Binding SelectionBackground}"
+                                BorderBrush="{Binding SelectionBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="5"
+                                Padding="8,5">
+                          <Grid ColumnDefinitions="*,84,108,96,40">
+                            <StackPanel Orientation="Horizontal" Spacing="7" Margin="{Binding TreeIndentMargin}">
+                              <Border Width="8" Height="8" CornerRadius="4"
+                                      Background="{Binding AccentColor}" VerticalAlignment="Center" />
+                              <TextBlock Text="{Binding Label}"
+                                         FontFamily="Menlo, Consolas, monospace"
+                                         FontSize="12"
+                                         Foreground="#E7ECEF"
+                                         TextTrimming="CharacterEllipsis"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding CostCell}"
+                                       FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                       Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding RowsCell}"
+                                       FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                       Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{Binding TimeCell}"
+                                       FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                       Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4" Text="{Binding IssueGlyph}"
+                                       FontSize="12" FontWeight="Bold"
+                                       Foreground="{Binding IssueColor}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </Grid>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+
             <controls:PlanGraphControl
                 Grid.Row="1"
                 Margin="0,12,0,0"
-                IsVisible="{Binding IsPlanTreeVisible}"
+                IsVisible="{Binding IsPlanGraphVisible}"
                 NodesSource="{Binding VisualPlanNodes}"
                 EdgesSource="{Binding GraphEdges}"
                 CanvasWidth="{Binding GraphWidth}"
@@ -448,6 +607,7 @@
 
       <Grid Grid.Row="1"
             Grid.RowSpan="2"
+            Classes="content-view"
             ColumnDefinitions="360,*"
             ColumnSpacing="16"
             IsVisible="{Binding IsConnectionsVisible}">
@@ -466,7 +626,8 @@
                         SelectedItem="{Binding NewConnectionDatabaseType}" />
             </StackPanel>
 
-            <Grid ColumnDefinitions="*,100" ColumnSpacing="10">
+            <Grid ColumnDefinitions="*,100" ColumnSpacing="10"
+                  IsVisible="{Binding !IsLocalDatabaseConnection}">
               <StackPanel Spacing="6">
                 <TextBlock Text="Host" FontSize="12" Foreground="#91A0AD" />
                 <TextBox Text="{Binding NewConnectionHost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="localhost" />
@@ -479,23 +640,26 @@
             </Grid>
 
             <StackPanel Spacing="6">
-              <TextBlock Text="Database" FontSize="12" Foreground="#91A0AD" />
-              <TextBox Text="{Binding NewConnectionDatabase, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="app_db" />
+              <TextBlock Text="{Binding NewConnectionDatabaseLabel}"
+                         FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewConnectionDatabase, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       Watermark="{Binding NewConnectionDatabaseWatermark}" />
             </StackPanel>
 
-            <StackPanel Spacing="6">
+            <StackPanel Spacing="6" IsVisible="{Binding !IsLocalDatabaseConnection}">
               <TextBlock Text="Username" FontSize="12" Foreground="#91A0AD" />
               <TextBox Text="{Binding NewConnectionUsername, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Watermark="postgres" />
             </StackPanel>
 
-            <StackPanel Spacing="6">
+            <StackPanel Spacing="6" IsVisible="{Binding !IsLocalDatabaseConnection}">
               <TextBlock Text="Password" FontSize="12" Foreground="#91A0AD" />
               <TextBox Text="{Binding NewConnectionPassword, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                        PasswordChar="*"
                        Watermark="Used for test only" />
             </StackPanel>
 
-            <CheckBox Content="Use SSL" IsChecked="{Binding NewConnectionUseSsl}" />
+            <CheckBox Content="Use SSL" IsChecked="{Binding NewConnectionUseSsl}"
+                      IsVisible="{Binding !IsLocalDatabaseConnection}" />
 
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
               <Button Content="Test Connection"
@@ -620,7 +784,7 @@
 
       <Border Grid.Row="1"
               Grid.RowSpan="2"
-              Classes="panel"
+              Classes="panel content-view"
               IsVisible="{Binding IsHistoryVisible}">
         <Grid RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto">
@@ -709,80 +873,474 @@
         </Grid>
       </Border>
 
+      <Grid Grid.Row="1"
+            Grid.RowSpan="2"
+            Classes="content-view"
+            ColumnDefinitions="340,*"
+            ColumnSpacing="16"
+            IsVisible="{Binding IsSnippetsVisible}">
+        <Border Classes="panel">
+          <StackPanel Spacing="12">
+            <TextBlock Text="New Snippet" FontSize="14" FontWeight="SemiBold" />
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Name" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewSnippetName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       Watermark="e.g. Count active users" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Description" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewSnippetDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       Watermark="Optional note" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="SQL" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewSnippetSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       Watermark="SELECT ..."
+                       AcceptsReturn="True"
+                       MinHeight="120"
+                       MaxHeight="200"
+                       FontFamily="Menlo, Consolas, monospace"
+                       FontSize="12" />
+            </StackPanel>
+
+            <Button Content="Save Snippet"
+                    Height="36"
+                    HorizontalAlignment="Stretch"
+                    Command="{Binding SaveSnippetCommand}" />
+
+            <TextBlock Text="{Binding SnippetStatusMessage}"
+                       FontSize="12"
+                       Foreground="#91A0AD"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Grid.Column="1" Classes="panel">
+          <Grid RowDefinitions="Auto,*">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Saved Snippets" FontSize="14" FontWeight="SemiBold" />
+              <Button Grid.Column="1"
+                      Content="Refresh"
+                      Height="32"
+                      Padding="14,0"
+                      Command="{Binding LoadSnippetsCommand}" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" Margin="0,12,0,0">
+              <ItemsControl ItemsSource="{Binding Snippets}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Margin="0,0,0,10"
+                            Padding="14"
+                            Background="#0F1419"
+                            BorderBrush="#26313A"
+                            BorderThickness="1"
+                            CornerRadius="8">
+                      <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="14"
+                                     FontWeight="SemiBold"
+                                     VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="1"
+                                     Text="{Binding CreatedAt}"
+                                     FontSize="10"
+                                     Foreground="#4A5A66"
+                                     VerticalAlignment="Center" />
+                        </Grid>
+
+                        <TextBlock Text="{Binding Description}"
+                                   FontSize="12"
+                                   Foreground="#91A0AD"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                        <Border Padding="8,6"
+                                Background="#0A0F13"
+                                BorderBrush="#1E2830"
+                                BorderThickness="1"
+                                CornerRadius="5">
+                          <TextBlock Text="{Binding SqlPreview}"
+                                     FontFamily="Menlo, Consolas, monospace"
+                                     FontSize="11"
+                                     Foreground="#CFE3F2"
+                                     TextWrapping="NoWrap" />
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                              IsVisible="{Binding IsPendingDelete, Converter={x:Static BoolConverters.Not}}">
+                          <Border />
+                          <Button Grid.Column="1"
+                                  Content="Open"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Command="{Binding DataContext.OpenSnippetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                          <Button Grid.Column="2"
+                                  Content="Delete"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Background="Transparent"
+                                  BorderBrush="#3A2020"
+                                  Foreground="#FF8A7A"
+                                  Command="{Binding DataContext.RequestDeleteSnippetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                              IsVisible="{Binding IsPendingDelete}">
+                          <TextBlock Text="Delete this snippet?"
+                                     FontSize="12"
+                                     Foreground="#91A0AD"
+                                     VerticalAlignment="Center" />
+                          <Button Grid.Column="1"
+                                  Content="Confirm delete"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Background="Transparent"
+                                  BorderBrush="#3A2020"
+                                  Foreground="#FF8A7A"
+                                  Command="{Binding DataContext.DeleteSnippetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                          <Button Grid.Column="2"
+                                  Content="Cancel"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Background="#17212A"
+                                  BorderBrush="#2A3640"
+                                  Command="{Binding DataContext.CancelDeleteSnippetCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                        </Grid>
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+      </Grid>
+
       <Border Grid.Row="1"
               Grid.RowSpan="2"
-              Classes="panel"
+              Classes="panel content-view"
               IsVisible="{Binding IsCompareVisible}">
-        <Grid RowDefinitions="*,Auto,*">
-          <StackPanel Grid.Row="1" Spacing="14" HorizontalAlignment="Center" MaxWidth="420">
-            <Viewbox Width="36" Height="36" HorizontalAlignment="Center">
-              <Path Data="M2,5 H11 L9,3 M9,7 L11,5 M14,11 H5 L7,9 M7,13 L5,11"
-                    Stroke="#2A3640"
-                    StrokeThickness="1.3"
-                    StrokeLineCap="Round"
-                    Fill="Transparent" />
-            </Viewbox>
-            <TextBlock Text="Query comparison — coming in v0.3"
-                       FontSize="15"
+        <Grid RowDefinitions="Auto,Auto,*">
+
+          <!-- header row -->
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10" Margin="0,0,0,16">
+            <TextBlock Text="Compare Queries"
+                       FontSize="14"
                        FontWeight="SemiBold"
-                       Foreground="#C6D0D8"
-                       HorizontalAlignment="Center" />
-            <TextBlock TextWrapping="Wrap"
-                       HorizontalAlignment="Center"
-                       TextAlignment="Center"
-                       FontSize="13"
-                       Foreground="#6F7E89"
-                       LineHeight="20">
-              Run two queries side by side, compare their execution plans, and measure the performance difference. Export a standalone HTML report to share with teammates.
-            </TextBlock>
-          </StackPanel>
+                       VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding CompareStatusMessage}"
+                       FontSize="12"
+                       Foreground="#91A0AD"
+                       VerticalAlignment="Center" />
+            <Button Grid.Column="2"
+                    Content="Run Compare"
+                    Height="28"
+                    Padding="10,0"
+                    CornerRadius="5"
+                    Background="#151C22"
+                    BorderBrush="#2A3640"
+                    IsEnabled="{Binding !IsCompareRunning}"
+                    Command="{Binding RunCompareCommand}" />
+          </Grid>
+
+          <!-- two SQL inputs -->
+          <Grid Grid.Row="1" ColumnDefinitions="*,12,*" Margin="0,0,0,16">
+            <Border Background="#0F1419"
+                    BorderBrush="#26313A"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <Grid RowDefinitions="Auto,*">
+                <TextBlock Text="Query A"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="#91A0AD"
+                           Margin="10,8,10,6" />
+                <TextBox Grid.Row="1"
+                         Text="{Binding CompareQueryAText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         FontFamily="Consolas,Menlo,monospace"
+                         FontSize="12"
+                         Foreground="#E7ECEF"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         MinHeight="120"
+                         Padding="10,0,10,10" />
+              </Grid>
+            </Border>
+
+            <Border Grid.Column="2"
+                    Background="#0F1419"
+                    BorderBrush="#26313A"
+                    BorderThickness="1"
+                    CornerRadius="6">
+              <Grid RowDefinitions="Auto,*">
+                <TextBlock Text="Query B"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Foreground="#91A0AD"
+                           Margin="10,8,10,6" />
+                <TextBox Grid.Row="1"
+                         Text="{Binding CompareQueryBText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         FontFamily="Consolas,Menlo,monospace"
+                         FontSize="12"
+                         Foreground="#E7ECEF"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         MinHeight="120"
+                         Padding="10,0,10,10" />
+              </Grid>
+            </Border>
+          </Grid>
+
+          <!-- results -->
+          <Grid Grid.Row="2" ColumnDefinitions="*,12,*" IsVisible="{Binding CompareHasResults}">
+
+            <!-- Result A card -->
+            <Border Background="#0F1419"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14"
+                    BorderBrush="{Binding CompareResultA.WinnerBorderBrush}">
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding CompareResultA.Label}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             Foreground="#C6D0D8" />
+                  <Border Grid.Column="1"
+                          Padding="6,2"
+                          CornerRadius="4"
+                          Background="#0D2211"
+                          IsVisible="{Binding CompareResultA.IsWinner}">
+                    <TextBlock Text="Winner"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               Foreground="#7BD88F" />
+                  </Border>
+                </Grid>
+                <TextBlock Text="{Binding CompareResultA.RootLabel}"
+                           FontSize="11"
+                           Foreground="#91A0AD"
+                           TextTrimming="CharacterEllipsis" />
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                  <StackPanel>
+                    <TextBlock Text="Time" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultA.TimeText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="Cost" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultA.CostText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="1">
+                    <TextBlock Text="Est. rows" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultA.EstRowsText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="1">
+                    <TextBlock Text="Act. rows" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultA.ActRowsText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding CompareResultA.NodeCountText}"
+                             FontSize="11"
+                             Foreground="#6F7E89"
+                             VerticalAlignment="Center" />
+                  <Border Grid.Column="1"
+                          Padding="6,2"
+                          CornerRadius="4"
+                          Background="#0F1419">
+                    <TextBlock Text="{Binding CompareResultA.IssueText}"
+                               FontSize="10"
+                               Foreground="{Binding CompareResultA.IssueColor}" />
+                  </Border>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Result B card -->
+            <Border Grid.Column="2"
+                    Background="#0F1419"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14"
+                    BorderBrush="{Binding CompareResultB.WinnerBorderBrush}">
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding CompareResultB.Label}"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             Foreground="#C6D0D8" />
+                  <Border Grid.Column="1"
+                          Padding="6,2"
+                          CornerRadius="4"
+                          Background="#0D2211"
+                          IsVisible="{Binding CompareResultB.IsWinner}">
+                    <TextBlock Text="Winner"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               Foreground="#7BD88F" />
+                  </Border>
+                </Grid>
+                <TextBlock Text="{Binding CompareResultB.RootLabel}"
+                           FontSize="11"
+                           Foreground="#91A0AD"
+                           TextTrimming="CharacterEllipsis" />
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                  <StackPanel>
+                    <TextBlock Text="Time" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultB.TimeText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="Cost" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultB.CostText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="1">
+                    <TextBlock Text="Est. rows" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultB.EstRowsText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="1">
+                    <TextBlock Text="Act. rows" FontSize="10" Foreground="#6F7E89" />
+                    <TextBlock Text="{Binding CompareResultB.ActRowsText}" FontSize="12" Foreground="#E7ECEF" />
+                  </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="{Binding CompareResultB.NodeCountText}"
+                             FontSize="11"
+                             Foreground="#6F7E89"
+                             VerticalAlignment="Center" />
+                  <Border Grid.Column="1"
+                          Padding="6,2"
+                          CornerRadius="4"
+                          Background="#0F1419">
+                    <TextBlock Text="{Binding CompareResultB.IssueText}"
+                               FontSize="10"
+                               Foreground="{Binding CompareResultB.IssueColor}" />
+                  </Border>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+          </Grid>
         </Grid>
       </Border>
 
       <Border Grid.Row="2" Classes="panel" IsVisible="{Binding IsWorkspaceVisible}">
         <Grid RowDefinitions="Auto,*">
-          <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Text="Results" FontSize="14" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+            <TextBlock Text="Results" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
             <TextBlock Grid.Column="1"
                        Text="{Binding QueryStatusMessage}"
                        FontSize="12"
                        Foreground="#91A0AD"
                        VerticalAlignment="Center" />
+            <Button Grid.Column="2"
+                    Content="Export CSV"
+                    Height="28"
+                    Padding="10,0"
+                    CornerRadius="5"
+                    Background="#151C22"
+                    BorderBrush="#2A3640"
+                    Command="{Binding ExportResultsToCsvCommand}" />
           </Grid>
-          <Grid Grid.Row="1"
-                Margin="0,12,0,0"
-                RowDefinitions="Auto,*">
-            <Border Background="#0F1419"
-                    BorderBrush="#26313A"
-                    BorderThickness="0,0,0,1">
-              <TextBlock Text="{Binding ResultHeaderText}"
-                         VerticalAlignment="Center"
-                         Margin="12,6"
-                         FontFamily="Menlo, Consolas, monospace"
-                         FontSize="12"
-                         Foreground="#91A0AD"
-                         IsVisible="{Binding ResultHeaderText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            </Border>
+          <Grid Grid.Row="1" Margin="0,12,0,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+              <Grid Width="{Binding ResultTotalWidth}" RowDefinitions="Auto,*">
+                <ItemsControl Grid.Row="0" ItemsSource="{Binding ResultColumnsView}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Width="{Binding Width}"
+                              Height="28"
+                              Padding="8,0"
+                              HorizontalContentAlignment="Left"
+                              VerticalContentAlignment="Center"
+                              Background="#0F1419"
+                              BorderBrush="#26313A"
+                              BorderThickness="0,0,1,1"
+                              CornerRadius="0"
+                              Command="{Binding DataContext.SortResultsByColumnCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                              CommandParameter="{Binding Name}">
+                        <TextBlock Text="{Binding Header}"
+                                   FontFamily="Menlo, Consolas, monospace"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="#91A0AD"
+                                   TextTrimming="CharacterEllipsis" />
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
 
-            <ScrollViewer Grid.Row="1"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto">
-              <ItemsControl ItemsSource="{Binding ResultRows}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Padding="0,0,0,0"
-                            BorderBrush="#202B33"
-                            BorderThickness="0,0,0,1">
-                      <TextBlock Text="{Binding DisplayText}"
-                                 FontFamily="Menlo, Consolas, monospace"
-                                 FontSize="12"
-                                 Foreground="#CFE3F2"
-                                 Padding="12,5"
-                                 TextWrapping="NoWrap" />
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+                <ScrollViewer Grid.Row="1"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                  <ListBox x:Name="ResultsListBox"
+                           ItemsSource="{Binding ResultRows}"
+                           Background="Transparent"
+                           BorderThickness="0"
+                           Padding="0">
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                      </Style>
+                      <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                        <Setter Property="Background" Value="#17212A" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.KeyBindings>
+                      <KeyBinding Gesture="Ctrl+C"
+                                  Command="{Binding CopySelectedResultRowCommand}"
+                                  CommandParameter="{Binding #ResultsListBox.SelectedItem}" />
+                    </ListBox.KeyBindings>
+                    <ListBox.ItemTemplate>
+                      <DataTemplate>
+                        <Border BorderBrush="#202B33" BorderThickness="0,0,0,1">
+                          <ItemsControl ItemsSource="{Binding Cells}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                              </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate>
+                                <TextBlock Text="{Binding Text}"
+                                           Width="{Binding Width}"
+                                           FontFamily="Menlo, Consolas, monospace"
+                                           FontSize="12"
+                                           FontStyle="{Binding FontStyle}"
+                                           Foreground="{Binding Foreground}"
+                                           Padding="8,4"
+                                           TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </Border>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                </ScrollViewer>
+              </Grid>
             </ScrollViewer>
           </Grid>
         </Grid>

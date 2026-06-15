@@ -12,7 +12,15 @@ Desktop SQL analysis tool for query execution, execution-plan visualization, and
 
 ## Current State
 
-Initial solution skeleton with an Avalonia desktop bootstrap, shell UI, dependency injection wiring, EF Core SQLite model, startup database migration, an initial SQLite migration, and a basic Connections screen that saves connection metadata locally. PostgreSQL/MySQL/MariaDB connection testing and query execution are wired through native drivers and connected to the Editor Run action. Query runs are recorded in local history and displayed on the History screen, where entries can be reopened in the editor. Passwords are accepted for test connections and session query execution but are not persisted yet. Plan-analysis implementation has not been added yet.
+Avalonia desktop application with dependency injection, EF Core SQLite persistence, and startup migrations. Supports four database engines: **PostgreSQL, MySQL, MariaDB, and SQLite** — each with connection testing and full query execution. Query results are shown in a resizable grid; runs are recorded in local history and can be reopened in the editor.
+
+Execution plans are fetched via `EXPLAIN ANALYZE` (PostgreSQL/MySQL/MariaDB) and `EXPLAIN QUERY PLAN` (SQLite), parsed, and rendered as an interactive node graph (`PlanGraphControl`) with a graph layout engine that positions nodes by dependency depth. Each node shows cost, actual vs. estimated row counts, and detected issues (seq scan, high cost, row estimate mismatch, etc.).
+
+**Plan comparison** lets you run two queries side by side and see a summary diff — cost, timing, node count, and a winner indicator.
+
+**Snippet management** allows saving, browsing, and reusing SQL snippets across sessions.
+
+Passwords are accepted for connection testing and session query execution but are not persisted.
 
 ## Build
 

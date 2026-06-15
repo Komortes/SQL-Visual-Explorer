@@ -14,6 +14,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IQueryExecutionService _queryExecutionService;
     private readonly IExplainAnalyzeService _explainAnalyzeService;
     private readonly IHistoryService _historyService;
+    private readonly ISnippetService _snippetService;
 
     [ObservableProperty]
     private ShellNavigationItemViewModel _selectedNavigationItem;
@@ -28,6 +29,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isCompareVisible;
 
     [ObservableProperty]
+    private bool _isSnippetsVisible;
+
+    [ObservableProperty]
     private bool _isWorkspaceVisible = true;
 
     [ObservableProperty]
@@ -37,7 +41,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool _isPlanVisible;
 
     [ObservableProperty]
-    private bool _isPlanTreeVisible = true;
+    private bool _isPlanTableVisible = true;
+
+    [ObservableProperty]
+    private bool _isPlanGraphVisible;
 
     [ObservableProperty]
     private bool _isPlanFlamegraphVisible;
@@ -48,7 +55,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _newConnectionName = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLocalDatabaseConnection))]
+    [NotifyPropertyChangedFor(nameof(NewConnectionDatabaseLabel))]
+    [NotifyPropertyChangedFor(nameof(NewConnectionDatabaseWatermark))]
     private DatabaseType _newConnectionDatabaseType = DatabaseType.PostgreSql;
+
+    public bool IsLocalDatabaseConnection => NewConnectionDatabaseType == DatabaseType.SQLite;
+
+    public string NewConnectionDatabaseLabel => IsLocalDatabaseConnection ? "File path" : "Database";
+
+    public string NewConnectionDatabaseWatermark => IsLocalDatabaseConnection
+        ? "/path/to/database.sqlite"
+        : "app_db";
 
     [ObservableProperty]
     private string _newConnectionHost = "localhost";
@@ -77,6 +95,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RunQueryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExplainQueryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExplainAnalyzeQueryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
     private ConnectionListItemViewModel? _selectedConnection;
 
     [ObservableProperty]
@@ -92,7 +111,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _queryStatusMessage = "No query has been executed yet.";
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunQueryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExplainQueryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExplainAnalyzeQueryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
+    private bool _isBusy;
+
+    private CancellationTokenSource? _cts;
+
+    [ObservableProperty]
     private string _resultHeaderText = string.Empty;
+
+    [ObservableProperty]
+    private double _resultTotalWidth;
+
+    private readonly List<QueryResultRowViewModel> _resultRowsBacking = [];
+
+    private string? _resultSortColumn;
+
+    private bool _resultSortAscending = true;
 
     [ObservableProperty]
     private string _planSummaryText = "Run Explain to inspect the selected query plan.";
@@ -124,12 +161,56 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string _selectedPlanNodeDetails = "Run Explain and select a node to inspect details.";
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveSnippetCommand))]
+    private string _newSnippetName = string.Empty;
+
+    [ObservableProperty]
+    private string _newSnippetDescription = string.Empty;
+
+    [ObservableProperty]
+    private string _newSnippetSqlText = string.Empty;
+
+    [ObservableProperty]
+    private string _snippetStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
+    private string _compareQueryAText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
+    private string _compareQueryBText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
+    private bool _isCompareRunning;
+
+    [ObservableProperty]
+    private string _compareStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _compareHasResults;
+
+    [ObservableProperty]
+    private ComparePlanResultViewModel? _compareResultA;
+
+    [ObservableProperty]
+    private ComparePlanResultViewModel? _compareResultB;
+
+    public Func<string, Task<string?>>? RequestSaveFilePath { get; set; }
+
+    public Func<double>? ComputeFitZoom { get; set; }
+
+    public Func<string, Task>? CopyTextToClipboard { get; set; }
+
     public MainWindowViewModel()
         : this(
             new DesignConnectionService(),
             new DesignQueryExecutionService(),
             new DesignExplainAnalyzeService(),
-            new DesignHistoryService())
+            new DesignHistoryService(),
+            new DesignSnippetService())
     {
     }
 
@@ -137,12 +218,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IConnectionService connectionService,
         IQueryExecutionService queryExecutionService,
         IExplainAnalyzeService explainAnalyzeService,
-        IHistoryService historyService)
+        IHistoryService historyService,
+        ISnippetService snippetService)
     {
         _connectionService = connectionService;
         _queryExecutionService = queryExecutionService;
         _explainAnalyzeService = explainAnalyzeService;
         _historyService = historyService;
+        _snippetService = snippetService;
 
         NavigationItems =
         [
@@ -156,6 +239,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 "M8,1 A7,7,0,1,0,8,15 A7,7,0,1,0,8,1 M8,4 V8 L11,10"),
             new("DB", "Connect", "Database connections",
                 "M2,4 A6,2,0,1,0,14,4 M2,4 L2,12 A6,2,0,0,0,14,12 L14,4 M2,8 A6,2,0,0,0,14,8"),
+            new("SN", "Snippets", "Saved SQL snippets",
+                "M2,2 H14 V6 H2 Z M2,8 H14 V12 H2 Z M4,4 H12 M4,10 H9"),
         ];
 
         _selectedNavigationItem = NavigationItems[0];
@@ -181,6 +266,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<QueryResultRowViewModel> ResultRows { get; } = [];
 
+    public ObservableCollection<ResultColumnViewModel> ResultColumnsView { get; } = [];
+
     public ObservableCollection<PlanNodeVisualItemViewModel> VisualPlanNodes { get; } = [];
 
     public ObservableCollection<GraphEdgeViewModel> GraphEdges { get; } = [];
@@ -190,6 +277,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<PlanIssueItemViewModel> SelectedPlanNodeIssues { get; } = [];
 
     public ObservableCollection<QueryHistoryItemViewModel> HistoryItems { get; } = [];
+
+    public ObservableCollection<SnippetItemViewModel> Snippets { get; } = [];
 
     public string ActiveTitle => SelectedNavigationItem.Label;
 
@@ -207,7 +296,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsConnectionsVisible = value.Code == "DB";
         IsHistoryVisible = value.Code == "HS";
         IsCompareVisible = value.Code == "CP";
-        IsWorkspaceVisible = !IsConnectionsVisible && !IsHistoryVisible && !IsCompareVisible;
+        IsSnippetsVisible = value.Code == "SN";
+        IsWorkspaceVisible = !IsConnectionsVisible && !IsHistoryVisible && !IsCompareVisible && !IsSnippetsVisible;
         IsPlanVisible = value.Code == "PL";
         IsEditorVisible = IsWorkspaceVisible && !IsPlanVisible;
 
@@ -219,6 +309,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         if (IsHistoryVisible)
         {
             LoadHistoryCommand.Execute(null);
+        }
+
+        if (IsSnippetsVisible)
+        {
+            LoadSnippetsCommand.Execute(null);
+        }
+
+        if (IsCompareVisible && string.IsNullOrWhiteSpace(CompareQueryAText))
+        {
+            CompareQueryAText = SqlText;
         }
     }
 
@@ -235,7 +335,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private void ZoomOut() => GraphZoom = Math.Max(GraphZoom - 0.2, 0.4);
 
     [RelayCommand]
-    private void ZoomFit() => GraphZoom = 1.0;
+    private void ZoomFit() => GraphZoom = ComputeFitZoom?.Invoke() ?? 1.0;
 
     [RelayCommand]
     private void SelectConnection(ConnectionListItemViewModel item)
@@ -375,6 +475,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         QueryStatusMessage = "Running query...";
         ResultColumns.Clear();
+        ResultColumnsView.Clear();
         ResultRows.Clear();
         VisualPlanNodes.Clear();
         PlanIssues.Clear();
@@ -384,26 +485,36 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SelectedPlanNodeTitle = "No plan node selected.";
         SelectedPlanNodeDetails = "Run Explain and select a node to inspect details.";
         var stopwatch = Stopwatch.StartNew();
+        IsBusy = true;
+        _cts = new CancellationTokenSource();
 
         try
         {
-            var result = await _queryExecutionService.ExecuteAsync(CreateExecutableConnection(), SqlText);
+            var result = await _queryExecutionService.ExecuteAsync(CreateExecutableConnection(), SqlText, _cts.Token);
             stopwatch.Stop();
 
-            foreach (var col in result.Columns)
-                ResultColumns.Add(col);
-
-            BuildAlignedResultTable(result.Columns, result.Rows, ResultRows, out var header);
-            ResultHeaderText = header;
+            BuildResultGrid(result.Columns, result.Rows);
+            ExportResultsToCsvCommand.NotifyCanExecuteChanged();
 
             QueryStatusMessage = $"Returned {result.RowCount} row(s) in {result.Duration.TotalMilliseconds:N0} ms.";
             await RecordHistoryAsync(true, result.Duration, result.RowCount, null);
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            QueryStatusMessage = "Query cancelled.";
         }
         catch (Exception exception)
         {
             stopwatch.Stop();
             QueryStatusMessage = GetFriendlyErrorMessage(exception);
             await RecordHistoryAsync(false, stopwatch.Elapsed, null, exception.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+            _cts?.Dispose();
+            _cts = null;
         }
     }
 
@@ -413,7 +524,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         await ExplainQueryCoreAsync(
             "Running explain...",
             "Explain is running...",
-            (connection, sql) => _explainAnalyzeService.ExplainAsync(connection, sql),
+            (connection, sql, token) => _explainAnalyzeService.ExplainAsync(connection, sql, token),
             "Explain");
     }
 
@@ -423,14 +534,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         await ExplainQueryCoreAsync(
             "Running explain analyze...",
             "Explain Analyze is running. The database will execute the query.",
-            (connection, sql) => _explainAnalyzeService.ExplainAnalyzeAsync(connection, sql),
+            (connection, sql, token) => _explainAnalyzeService.ExplainAnalyzeAsync(connection, sql, token),
             "Explain Analyze");
     }
 
     private async Task ExplainQueryCoreAsync(
         string runningStatus,
         string runningSummary,
-        Func<Connection, string, Task<ExecutionPlan>> explainFunc,
+        Func<Connection, string, CancellationToken, Task<ExecutionPlan>> explainFunc,
         string label)
     {
         if (SelectedConnection is null)
@@ -441,6 +552,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         QueryStatusMessage = runningStatus;
         ResultColumns.Clear();
+        ResultColumnsView.Clear();
         ResultRows.Clear();
         VisualPlanNodes.Clear();
         GraphEdges.Clear();
@@ -453,30 +565,16 @@ public sealed partial class MainWindowViewModel : ObservableObject
         SelectedPlanNodeTitle = "No plan node selected.";
         SelectedPlanNodeDetails = "Explain is running.";
         var stopwatch = Stopwatch.StartNew();
+        IsBusy = true;
+        _cts = new CancellationTokenSource();
 
         try
         {
-            var plan = await explainFunc(CreateExecutableConnection(), SqlText);
+            var plan = await explainFunc(CreateExecutableConnection(), SqlText, _cts.Token);
             stopwatch.Stop();
 
             var flattenedNodes = FlattenPlan(plan.Root).ToList();
-            IReadOnlyList<string> columns = ["depth", "operation", "cost", "estimated_rows", "actual_time_ms", "actual_rows"];
-            foreach (var col in columns)
-                ResultColumns.Add(col);
             var issueItemsByNodeId = BuildIssueIndex(plan.Issues);
-
-            var planRows = flattenedNodes.Select(item => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>
-            {
-                ["depth"] = item.Depth,
-                ["operation"] = $"{new string(' ', item.Depth * 2)}{item.Node.Label}",
-                ["cost"] = item.Node.TotalCost,
-                ["estimated_rows"] = item.Node.EstimatedRows,
-                ["actual_time_ms"] = item.Node.ActualTotalTimeMs,
-                ["actual_rows"] = item.Node.ActualRows
-            }).ToList();
-
-            BuildAlignedResultTable(columns, planRows, ResultRows, out var planHeader);
-            ResultHeaderText = planHeader;
 
             foreach (var item in flattenedNodes)
             {
@@ -495,14 +593,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
             PlanSummaryText = BuildPlanSummary(plan.Root, flattenedNodes.Count, plan.Issues.Count);
             UpdateIssuesBadge(plan.Issues);
-            PlanTreeHeaderText = $"Plan Graph ({flattenedNodes.Count} node(s))";
+            PlanTreeHeaderText = $"Plan ({flattenedNodes.Count} node(s))";
 
             if (plan.Root is not null)
                 ApplyGraphLayout(plan.Root);
             SelectPlanNode(VisualPlanNodes.FirstOrDefault());
+            ExportResultsToCsvCommand.NotifyCanExecuteChanged();
             QueryStatusMessage = $"{label} returned {flattenedNodes.Count} plan node(s), {plan.Issues.Count} issue(s) in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.";
             SelectedNavigationItem = NavigationItems.First(item => item.Code == "PL");
             await RecordHistoryAsync(true, stopwatch.Elapsed, flattenedNodes.Count, null, plan.RawJson);
+        }
+        catch (OperationCanceledException)
+        {
+            stopwatch.Stop();
+            QueryStatusMessage = $"{label} cancelled.";
+            PlanSummaryText = "Cancelled.";
         }
         catch (Exception exception)
         {
@@ -514,6 +619,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
             SelectedPlanNodeTitle = "No plan node selected.";
             SelectedPlanNodeDetails = friendlyMessage;
             await RecordHistoryAsync(false, stopwatch.Elapsed, null, exception.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+            _cts?.Dispose();
+            _cts = null;
         }
     }
 
@@ -544,22 +655,41 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ShowPlanTree()
+    private void ShowPlanTable()
     {
-        IsPlanTreeVisible = true;
+        IsPlanTableVisible = true;
+        IsPlanGraphVisible = false;
+        IsPlanFlamegraphVisible = false;
+    }
+
+    [RelayCommand]
+    private void ShowPlanGraph()
+    {
+        IsPlanTableVisible = false;
+        IsPlanGraphVisible = true;
         IsPlanFlamegraphVisible = false;
     }
 
     [RelayCommand]
     private void ShowPlanFlamegraph()
     {
-        IsPlanTreeVisible = false;
+        IsPlanTableVisible = false;
+        IsPlanGraphVisible = false;
         IsPlanFlamegraphVisible = true;
     }
 
     private bool CanRunQuery()
     {
-        return SelectedConnection is not null && !string.IsNullOrWhiteSpace(SqlText);
+        return SelectedConnection is not null && !string.IsNullOrWhiteSpace(SqlText) && !IsBusy;
+    }
+
+    [RelayCommand]
+    private void CancelRun() => _cts?.Cancel();
+
+    [RelayCommand]
+    private void ShowAbout()
+    {
+        QueryStatusMessage = "SQL Visual Explorer — analyze EXPLAIN plans fast. Tree, graph and grid views.";
     }
 
     partial void OnSelectedConnectionChanged(ConnectionListItemViewModel? value)
@@ -572,6 +702,218 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         SqlText = item.SqlText;
         SelectedNavigationItem = NavigationItems.First(item => item.Code == "ED");
+    }
+
+    [RelayCommand]
+    public async Task LoadSnippetsAsync()
+    {
+        var snippets = await _snippetService.GetSnippetsAsync();
+
+        Snippets.Clear();
+
+        foreach (var snippet in snippets)
+            Snippets.Add(SnippetItemViewModel.FromSnippet(snippet));
+
+        SnippetStatusMessage = Snippets.Count == 0
+            ? "No saved snippets yet."
+            : $"{Snippets.Count} snippet(s).";
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSaveSnippet))]
+    private async Task SaveSnippetAsync()
+    {
+        var snippet = await _snippetService.CreateSnippetAsync(new CreateSnippetRequest
+        {
+            Name = NewSnippetName,
+            Description = NewSnippetDescription,
+            SqlText = NewSnippetSqlText
+        });
+
+        Snippets.Insert(0, SnippetItemViewModel.FromSnippet(snippet));
+        NewSnippetName = string.Empty;
+        NewSnippetDescription = string.Empty;
+        NewSnippetSqlText = string.Empty;
+        SnippetStatusMessage = $"Saved snippet \"{snippet.Name}\".";
+    }
+
+    private bool CanSaveSnippet() => !string.IsNullOrWhiteSpace(NewSnippetName);
+
+    [RelayCommand]
+    private void OpenSnippet(SnippetItemViewModel item)
+    {
+        SqlText = item.SqlText;
+        SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
+    }
+
+    [RelayCommand]
+    private void SaveCurrentQueryAsSnippet()
+    {
+        NewSnippetName = string.Empty;
+        NewSnippetDescription = string.Empty;
+        NewSnippetSqlText = SqlText;
+        SelectedNavigationItem = NavigationItems.First(n => n.Code == "SN");
+    }
+
+    [RelayCommand]
+    private void RequestDeleteSnippet(SnippetItemViewModel item) =>
+        item.IsPendingDelete = true;
+
+    [RelayCommand]
+    private void CancelDeleteSnippet(SnippetItemViewModel item) =>
+        item.IsPendingDelete = false;
+
+    [RelayCommand]
+    private async Task DeleteSnippetAsync(SnippetItemViewModel item)
+    {
+        item.IsPendingDelete = false;
+        await _snippetService.DeleteSnippetAsync(item.Id);
+        Snippets.Remove(item);
+        SnippetStatusMessage = $"Deleted \"{item.Name}\".";
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRunCompare))]
+    private async Task RunCompareAsync()
+    {
+        IsCompareRunning = true;
+        IsBusy = true;
+        _cts = new CancellationTokenSource();
+        CompareStatusMessage = "Running EXPLAIN ANALYZE on both queries…";
+        CompareHasResults = false;
+        CompareResultA = null;
+        CompareResultB = null;
+
+        try
+        {
+            var conn  = CreateExecutableConnection();
+            var taskA = _explainAnalyzeService.ExplainAnalyzeAsync(conn, CompareQueryAText, _cts.Token);
+            var taskB = _explainAnalyzeService.ExplainAnalyzeAsync(conn, CompareQueryBText, _cts.Token);
+            await Task.WhenAll(taskA, taskB);
+
+            var resultA = BuildCompareResult("Query A", taskA.Result);
+            var resultB = BuildCompareResult("Query B", taskB.Result);
+            DetermineCompareWinner(resultA, resultB, taskA.Result, taskB.Result);
+
+            CompareResultA    = resultA;
+            CompareResultB    = resultB;
+            CompareHasResults = true;
+
+            var winner = resultA.IsWinner ? "A" : resultB.IsWinner ? "B" : "Tie";
+            CompareStatusMessage = winner == "Tie"
+                ? "Done — no clear winner (equal cost/time)."
+                : $"Done — Query {winner} is faster.";
+        }
+        catch (OperationCanceledException)
+        {
+            CompareStatusMessage = "Compare cancelled.";
+        }
+        catch (Exception ex)
+        {
+            CompareStatusMessage = GetFriendlyErrorMessage(ex);
+        }
+        finally
+        {
+            IsCompareRunning = false;
+            IsBusy = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
+
+    private bool CanRunCompare() =>
+        SelectedConnection is not null &&
+        !string.IsNullOrWhiteSpace(CompareQueryAText) &&
+        !string.IsNullOrWhiteSpace(CompareQueryBText) &&
+        !IsCompareRunning &&
+        !IsBusy;
+
+    private static ComparePlanResultViewModel BuildCompareResult(string label, ExecutionPlan plan)
+    {
+        var root      = plan.Root;
+        var cost      = root?.TotalCost is null         ? "n/a" : root.TotalCost.Value.ToString("N2");
+        var time      = root?.ActualTotalTimeMs is null ? "n/a" : $"{root.ActualTotalTimeMs.Value:N2} ms";
+        var estRows   = root?.EstimatedRows is null     ? "n/a" : root.EstimatedRows.Value.ToString("N0");
+        var actRows   = root?.ActualRows is null        ? "n/a" : root.ActualRows.Value.ToString("N0");
+        var nodeCount = FlattenPlan(root).Count();
+        var issues    = plan.Issues;
+
+        var issueColor = issues.Any(i => i.Severity == IssueSeverity.Critical) ? "#FF8A7A" :
+                         issues.Any(i => i.Severity == IssueSeverity.Warning)  ? "#FFD166" :
+                         issues.Count > 0                                       ? "#80B8FF" : "#7BD88F";
+
+        return new ComparePlanResultViewModel
+        {
+            Label         = label,
+            RootLabel     = root?.Label ?? "No plan returned",
+            CostText      = cost,
+            TimeText      = time,
+            EstRowsText   = estRows,
+            ActRowsText   = actRows,
+            NodeCountText = $"{nodeCount} node(s)",
+            IssueText     = issues.Count == 0 ? "No issues" : $"{issues.Count} issue(s)",
+            IssueColor    = issueColor,
+        };
+    }
+
+    private static void DetermineCompareWinner(
+        ComparePlanResultViewModel a,
+        ComparePlanResultViewModel b,
+        ExecutionPlan planA,
+        ExecutionPlan planB)
+    {
+        var timeA = planA.Root?.ActualTotalTimeMs;
+        var timeB = planB.Root?.ActualTotalTimeMs;
+        if (timeA.HasValue && timeB.HasValue)
+        {
+            if (timeA.Value < timeB.Value) a.IsWinner = true;
+            else if (timeB.Value < timeA.Value) b.IsWinner = true;
+            return;
+        }
+
+        var costA = planA.Root?.TotalCost;
+        var costB = planB.Root?.TotalCost;
+        if (costA.HasValue && costB.HasValue)
+        {
+            if (costA.Value < costB.Value) a.IsWinner = true;
+            else if (costB.Value < costA.Value) b.IsWinner = true;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExportResults))]
+    private async Task ExportResultsToCsvAsync()
+    {
+        if (RequestSaveFilePath is null) return;
+
+        var path = await RequestSaveFilePath("results.csv");
+        if (path is null) return;
+
+        try
+        {
+            var columns = ResultColumns.ToList();
+            var lines = new System.Text.StringBuilder();
+            lines.AppendLine(string.Join(",", columns.Select(EscapeCsvField)));
+
+            foreach (var row in ResultRows)
+            {
+                lines.AppendLine(string.Join(",",
+                    columns.Select(col => EscapeCsvField(FormatCellValue(row.Values.GetValueOrDefault(col))))));
+            }
+
+            await File.WriteAllTextAsync(path, lines.ToString(), System.Text.Encoding.UTF8);
+            QueryStatusMessage = $"Exported {ResultRows.Count} row(s) to {Path.GetFileName(path)}.";
+        }
+        catch (Exception ex)
+        {
+            QueryStatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    private bool CanExportResults() => ResultRows.Count > 0;
+
+    private static string EscapeCsvField(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
     }
 
     private async Task RecordHistoryAsync(
@@ -701,7 +1043,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var maxY = positions.Values.Select(p => p.Y).DefaultIfEmpty(0).Max();
         GraphWidth  = maxX + GraphLayoutEngine.NodeWidth  + 40;
         GraphHeight = maxY + GraphLayoutEngine.NodeHeight + 40;
-        GraphZoom   = 1.0;
+        GraphZoom   = ComputeFitZoom?.Invoke() ?? 1.0;
     }
 
     private void BuildEdges(PlanNode node, IReadOnlyDictionary<Guid, (double X, double Y)> positions)
@@ -751,33 +1093,130 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return $"Root: {root.Label}\nNodes: {nodeCount}\nIssues: {issueCount}\nEstimated cost: {cost}\nEstimated rows: {rows}\nActual time: {actualTime}";
     }
 
-    private static void BuildAlignedResultTable(
+    private void BuildResultGrid(
         IReadOnlyList<string> columns,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
-        System.Collections.ObjectModel.ObservableCollection<QueryResultRowViewModel> target,
-        out string headerText)
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows)
     {
+        ResultColumns.Clear();
+        ResultColumnsView.Clear();
+        ResultRows.Clear();
+        _resultRowsBacking.Clear();
+        _resultSortColumn = null;
+        _resultSortAscending = true;
+
         if (columns.Count == 0)
         {
-            headerText = "No columns returned";
+            ResultTotalWidth = 0;
             return;
         }
 
-        var formatted = rows.Select(row =>
-            columns.Select(col => FormatCellValue(row.GetValueOrDefault(col))).ToArray()
-        ).ToList();
+        var widths = columns.ToDictionary(
+            col => col,
+            col =>
+            {
+                var maxContent = rows.Count == 0
+                    ? 0
+                    : rows.Max(row => FormatCellValue(row.GetValueOrDefault(col)).Length);
+                var chars = Math.Max(col.Length, maxContent);
+                return Math.Clamp(chars * 7.5 + 22, 72, 360);
+            });
 
-        var widths = columns.Select((col, i) =>
-            Math.Max(col.Length, formatted.Count == 0 ? 0 : formatted.Max(r => r[i].Length))
-        ).ToArray();
-
-        headerText = string.Join("  ", columns.Select((col, i) => col.PadRight(widths[i])));
-
-        foreach (var (raw, fmtRow) in rows.Zip(formatted))
+        foreach (var col in columns)
         {
-            var displayText = string.Join("  ", fmtRow.Select((val, i) => val.PadRight(widths[i])));
-            target.Add(new QueryResultRowViewModel { Values = raw, DisplayText = displayText });
+            ResultColumns.Add(col);
+            ResultColumnsView.Add(new ResultColumnViewModel { Name = col, Width = widths[col] });
         }
+
+        ResultTotalWidth = widths.Values.Sum();
+
+        foreach (var row in rows)
+        {
+            _resultRowsBacking.Add(new QueryResultRowViewModel
+            {
+                Values = row,
+                Cells = columns.Select(col =>
+                {
+                    var value = row.GetValueOrDefault(col);
+                    return new ResultCellViewModel
+                    {
+                        Text = FormatCellValue(value),
+                        Width = widths[col],
+                        IsNull = value is null
+                    };
+                }).ToList()
+            });
+        }
+
+        foreach (var row in _resultRowsBacking)
+            ResultRows.Add(row);
+    }
+
+    [RelayCommand]
+    private void SortResultsByColumn(string columnName)
+    {
+        if (string.IsNullOrEmpty(columnName) || _resultRowsBacking.Count == 0)
+            return;
+
+        if (_resultSortColumn == columnName)
+            _resultSortAscending = !_resultSortAscending;
+        else
+        {
+            _resultSortColumn = columnName;
+            _resultSortAscending = true;
+        }
+
+        _resultRowsBacking.Sort((a, b) =>
+        {
+            var left = a.Values.GetValueOrDefault(columnName);
+            var right = b.Values.GetValueOrDefault(columnName);
+            if (left is null && right is null) return 0;
+            if (left is null) return 1;
+            if (right is null) return -1;
+            var comparison = CompareNonNull(left, right);
+            return _resultSortAscending ? comparison : -comparison;
+        });
+
+        ResultRows.Clear();
+        foreach (var row in _resultRowsBacking)
+            ResultRows.Add(row);
+
+        var glyph = _resultSortAscending ? "▲" : "▼";
+        var rebuilt = ResultColumnsView
+            .Select(col => new ResultColumnViewModel
+            {
+                Name = col.Name,
+                Width = col.Width,
+                SortGlyph = col.Name == columnName ? glyph : string.Empty
+            })
+            .ToList();
+        ResultColumnsView.Clear();
+        foreach (var col in rebuilt)
+            ResultColumnsView.Add(col);
+    }
+
+    [RelayCommand]
+    private void CopySelectedResultRow(QueryResultRowViewModel? row)
+    {
+        if (row is null || CopyTextToClipboard is null)
+            return;
+
+        var line = string.Join(
+            "\t",
+            ResultColumns.Select(col => FormatCellValue(row.Values.GetValueOrDefault(col))));
+        _ = CopyTextToClipboard(line);
+    }
+
+    private static int CompareNonNull(object left, object right)
+    {
+        if (left.GetType() == right.GetType() && left is IComparable comparable)
+            return comparable.CompareTo(right);
+
+        var leftText = left.ToString() ?? string.Empty;
+        var rightText = right.ToString() ?? string.Empty;
+        if (double.TryParse(leftText, out var leftNumber) && double.TryParse(rightText, out var rightNumber))
+            return leftNumber.CompareTo(rightNumber);
+
+        return string.Compare(leftText, rightText, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatCellValue(object? value) => value switch
@@ -831,7 +1270,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         port = null;
 
-        if (string.IsNullOrWhiteSpace(NewConnectionPort))
+        if (IsLocalDatabaseConnection || string.IsNullOrWhiteSpace(NewConnectionPort))
         {
             return true;
         }
@@ -1014,6 +1453,43 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 Status = request.Succeeded ? "success" : "error",
                 ErrorMessage = request.ErrorMessage
             });
+        }
+    }
+
+    private sealed class DesignSnippetService : ISnippetService
+    {
+        public Task<IReadOnlyList<Snippet>> GetSnippetsAsync(CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<Snippet> snippets =
+            [
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Count all orders",
+                    Description = "Quick row count for the orders table",
+                    SqlText = "SELECT COUNT(*) FROM orders;",
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            ];
+
+            return Task.FromResult(snippets);
+        }
+
+        public Task<Snippet> CreateSnippetAsync(CreateSnippetRequest request, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(new Snippet
+            {
+                Id = Guid.NewGuid(),
+                Name = request.Name,
+                Description = request.Description,
+                SqlText = request.SqlText,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+        }
+
+        public Task<bool> DeleteSnippetAsync(Guid id, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(true);
         }
     }
 }

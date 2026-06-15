@@ -42,6 +42,18 @@ public sealed partial class PlanNodeVisualItemViewModel : ObservableObject
 
     public double CostBarWidth { get; init; }
 
+    public double CostRatio { get; init; }
+
+    public Thickness TreeIndentMargin { get; init; }
+
+    public string IssueGlyph { get; init; } = "·";
+
+    public string CostCell { get; init; } = "—";
+
+    public string RowsCell { get; init; } = "—";
+
+    public string TimeCell { get; init; } = "—";
+
     public double FlameBarWidth { get; init; }
 
     public string FlameMetricText { get; init; } = string.Empty;
@@ -83,7 +95,23 @@ public sealed partial class PlanNodeVisualItemViewModel : ObservableObject
             IssueText = severity?.ToString() ?? "OK",
             AccentColor = PickAccentColor(costRatio, severity),
             IssueColor = PickIssueColor(severity),
-            CostBarWidth = Math.Clamp(costRatio * 180, 8, 180),
+            CostBarWidth = Math.Clamp(costRatio * 160, 8, 160),
+            CostRatio = costRatio,
+            TreeIndentMargin = new Thickness(depth * 16, 0, 0, 0),
+            IssueGlyph = severity switch
+            {
+                IssueSeverity.Critical => "✕",
+                IssueSeverity.Warning => "⚠",
+                IssueSeverity.Info => "i",
+                _ => "·"
+            },
+            CostCell = node.TotalCost is null ? "—" : node.TotalCost.Value.ToString("N2"),
+            RowsCell = node.ActualRows is not null
+                ? node.ActualRows.Value.ToString("N0")
+                : node.EstimatedRows is not null
+                    ? node.EstimatedRows.Value.ToString("N0")
+                    : "—",
+            TimeCell = node.ActualTotalTimeMs is null ? "—" : $"{node.ActualTotalTimeMs.Value:N1} ms",
             FlameBarWidth = Math.Clamp(flameRatio * 620, 24, 620),
             FlameMetricText = FormatFlameMetric(node, flameRatio),
             IndentMargin = new Thickness(depth * 34, 0, 0, 10),

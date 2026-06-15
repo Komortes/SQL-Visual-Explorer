@@ -1,0 +1,16 @@
+namespace SQLVisualExplorer.Domain.Models;
+
+public sealed class Snippet
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public string SqlText { get; set; } = string.Empty;
+
+    public string? Tags { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}

@@ -48,11 +48,17 @@ public static class GraphLayoutEngine
         Dictionary<Guid, (double X, double Y)> positions,
         IReadOnlyDictionary<Guid, double> widths)
     {
-        var subtreeWidth = widths[node.Id];
-        var nodeLeft = subtreeLeft + (subtreeWidth - NodeWidth) / 2;
+        var y = depth * (NodeHeight + VerticalGap);
 
-        positions[node.Id] = (nodeLeft, depth * (NodeHeight + VerticalGap));
+        // Leaf: sit centered within its own subtree slot.
+        if (node.Children.Count == 0)
+        {
+            var subtreeWidth = widths[node.Id];
+            positions[node.Id] = (subtreeLeft + (subtreeWidth - NodeWidth) / 2, y);
+            return;
+        }
 
+        // Lay out children left-to-right first...
         var childLeft = subtreeLeft;
 
         foreach (var child in node.Children)
@@ -60,5 +66,12 @@ public static class GraphLayoutEngine
             AssignPositions(child, childLeft, depth + 1, positions, widths);
             childLeft += widths[child.Id] + HorizontalGap;
         }
+
+        // ...then center the parent over the midpoint of its children's node
+        // centers (Reingold-Tilford style) so edges stay symmetric and the
+        // tree never leans on asymmetric subtrees.
+        var firstCenter = positions[node.Children[0].Id].X + NodeWidth / 2;
+        var lastCenter  = positions[node.Children[^1].Id].X + NodeWidth / 2;
+        positions[node.Id] = ((firstCenter + lastCenter) / 2 - NodeWidth / 2, y);
     }
 }
