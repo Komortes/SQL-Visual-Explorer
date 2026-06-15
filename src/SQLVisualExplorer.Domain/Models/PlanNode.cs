@@ -12,4 +12,8 @@ public sealed class PlanNode
     public long? EstimatedRows { get; init; }
     public long? ActualRows { get; init; }
     public IReadOnlyList<PlanNode> Children { get; init; } = [];
+
+    public string? Filter { get; init; }
+
+    public int? HashBatches { get; init; }
 }

@@ -11,4 +11,6 @@ public interface IHistoryService
     Task<QueryHistoryEntry> RecordAsync(
         RecordQueryHistoryRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }

@@ -1,9 +1,13 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using SQLVisualExplorer.Domain.Models;
 
 namespace SQLVisualExplorer.UI.ViewModels;
 
-public sealed class QueryHistoryItemViewModel
+public sealed partial class QueryHistoryItemViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private bool _isPendingDelete;
+
     public Guid Id { get; init; }
 
     public string ConnectionName { get; init; } = string.Empty;
@@ -28,6 +32,8 @@ public sealed class QueryHistoryItemViewModel
 
     public string StatusBadgeForeground { get; init; } = "#91A0AD";
 
+    public double? DurationMs { get; init; }
+
     public static QueryHistoryItemViewModel FromEntry(QueryHistoryEntry entry)
     {
         var (badgeText, badgeBg, badgeFg) = entry.Status switch
@@ -51,6 +57,7 @@ public sealed class QueryHistoryItemViewModel
             StatusBadgeText = badgeText,
             StatusBadgeBackground = badgeBg,
             StatusBadgeForeground = badgeFg,
+            DurationMs = entry.Duration?.TotalMilliseconds,
         };
     }
 

@@ -125,6 +125,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private double _resultTotalWidth;
 
+    private readonly List<QueryHistoryItemViewModel> _allHistoryItems = [];
+
+    [ObservableProperty]
+    private string _historyFilterText = string.Empty;
+
+    [ObservableProperty]
+    private bool _historyShowSlowOnly;
+
+    [ObservableProperty]
+    private int _historySlowThresholdMs = 500;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CloseSnippetsPopupCommand))]
+    private bool _isSnippetsPopupVisible;
+
+    [ObservableProperty]
+    private string _snippetsPopupSearchText = string.Empty;
+
     private readonly List<QueryResultRowViewModel> _resultRowsBacking = [];
 
     private string? _resultSortColumn;
@@ -190,6 +208,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _compareStatusMessage = string.Empty;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ExportCompareToHtmlCommand))]
     private bool _compareHasResults;
 
     [ObservableProperty]
@@ -197,6 +216,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private ComparePlanResultViewModel? _compareResultB;
+
+    public ObservableCollection<PlanNodeVisualItemViewModel> ComparePlanNodesA { get; } = [];
+    public ObservableCollection<PlanNodeVisualItemViewModel> ComparePlanNodesB { get; } = [];
 
     public Func<string, Task<string?>>? RequestSaveFilePath { get; set; }
 
@@ -279,6 +301,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<QueryHistoryItemViewModel> HistoryItems { get; } = [];
 
     public ObservableCollection<SnippetItemViewModel> Snippets { get; } = [];
+
+    public ObservableCollection<SnippetItemViewModel> PopupSnippets { get; } = [];
 
     public string ActiveTitle => SelectedNavigationItem.Label;
 
@@ -389,12 +413,42 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         var history = await _historyService.GetRecentAsync();
 
-        HistoryItems.Clear();
-
+        _allHistoryItems.Clear();
         foreach (var entry in history)
+            _allHistoryItems.Add(QueryHistoryItemViewModel.FromEntry(entry));
+
+        ApplyHistoryFilters();
+    }
+
+    [RelayCommand]
+    private void ApplyHistoryFilters()
+    {
+        var filtered = _allHistoryItems.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(HistoryFilterText))
         {
-            HistoryItems.Add(QueryHistoryItemViewModel.FromEntry(entry));
+            var term = HistoryFilterText.Trim();
+            filtered = filtered.Where(item =>
+                item.SqlPreview.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                item.ConnectionName.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
+
+        if (HistoryShowSlowOnly)
+            filtered = filtered.Where(item =>
+                item.DurationMs.HasValue && item.DurationMs.Value >= HistorySlowThresholdMs);
+
+        HistoryItems.Clear();
+        foreach (var item in filtered)
+            HistoryItems.Add(item);
+    }
+
+    [RelayCommand]
+    private void ClearHistoryFilters()
+    {
+        HistoryFilterText = string.Empty;
+        HistoryShowSlowOnly = false;
+        HistorySlowThresholdMs = 500;
+        ApplyHistoryFilters();
     }
 
     [RelayCommand(CanExecute = nameof(CanSaveConnection))]
@@ -705,6 +759,38 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void CopyHistoryItemSql(QueryHistoryItemViewModel item)
+    {
+        if (CopyTextToClipboard is not null)
+            _ = CopyTextToClipboard(item.SqlText);
+    }
+
+    [RelayCommand]
+    private void RequestDeleteHistoryItem(QueryHistoryItemViewModel item) =>
+        item.IsPendingDelete = true;
+
+    [RelayCommand]
+    private void CancelDeleteHistoryItem(QueryHistoryItemViewModel item) =>
+        item.IsPendingDelete = false;
+
+    [RelayCommand]
+    private async Task DeleteHistoryItemAsync(QueryHistoryItemViewModel item)
+    {
+        item.IsPendingDelete = false;
+        await _historyService.DeleteAsync(item.Id);
+        HistoryItems.Remove(item);
+    }
+
+    [RelayCommand]
+    private void AddHistoryItemToSnippets(QueryHistoryItemViewModel item)
+    {
+        NewSnippetName = string.Empty;
+        NewSnippetDescription = string.Empty;
+        NewSnippetSqlText = item.SqlText;
+        SelectedNavigationItem = NavigationItems.First(n => n.Code == "SN");
+    }
+
+    [RelayCommand]
     public async Task LoadSnippetsAsync()
     {
         var snippets = await _snippetService.GetSnippetsAsync();
@@ -743,6 +829,44 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         SqlText = item.SqlText;
         SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
+    }
+
+    [RelayCommand]
+    private async Task OpenSnippetsPopupAsync()
+    {
+        if (Snippets.Count == 0)
+            await LoadSnippetsAsync();
+        SnippetsPopupSearchText = string.Empty;
+        RefreshPopupSnippets();
+        IsSnippetsPopupVisible = true;
+    }
+
+    [RelayCommand(CanExecute = nameof(IsSnippetsPopupVisible))]
+    private void CloseSnippetsPopup() => IsSnippetsPopupVisible = false;
+
+    [RelayCommand]
+    private void OpenSnippetFromPopup(SnippetItemViewModel item)
+    {
+        SqlText = item.SqlText;
+        IsSnippetsPopupVisible = false;
+        SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
+    }
+
+    partial void OnSnippetsPopupSearchTextChanged(string value) => RefreshPopupSnippets();
+
+    private void RefreshPopupSnippets()
+    {
+        PopupSnippets.Clear();
+        var term = SnippetsPopupSearchText.Trim();
+        foreach (var snippet in Snippets)
+        {
+            if (string.IsNullOrEmpty(term) ||
+                snippet.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                snippet.SqlPreview.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                PopupSnippets.Add(snippet);
+            }
+        }
     }
 
     [RelayCommand]
@@ -792,6 +916,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var resultA = BuildCompareResult("Query A", taskA.Result);
             var resultB = BuildCompareResult("Query B", taskB.Result);
             DetermineCompareWinner(resultA, resultB, taskA.Result, taskB.Result);
+            PopulateComparePlanNodes(ComparePlanNodesA, taskA.Result);
+            PopulateComparePlanNodes(ComparePlanNodesB, taskB.Result);
 
             CompareResultA    = resultA;
             CompareResultB    = resultB;
@@ -904,6 +1030,97 @@ public sealed partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             QueryStatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExportResults))]
+    private async Task ExportResultsToJsonAsync()
+    {
+        if (RequestSaveFilePath is null) return;
+
+        var path = await RequestSaveFilePath("results.json");
+        if (path is null) return;
+
+        try
+        {
+            var columns = ResultColumns.ToList();
+            var rows = ResultRows
+                .Select(row => columns.ToDictionary(
+                    col => col,
+                    col => (object?)FormatCellValue(row.Values.GetValueOrDefault(col))))
+                .ToList();
+
+            var json = System.Text.Json.JsonSerializer.Serialize(
+                rows,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+            await File.WriteAllTextAsync(path, json, System.Text.Encoding.UTF8);
+            QueryStatusMessage = $"Exported {ResultRows.Count} row(s) to {Path.GetFileName(path)}.";
+        }
+        catch (Exception ex)
+        {
+            QueryStatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExportPlan))]
+    private async Task ExportPlanToHtmlAsync()
+    {
+        if (RequestSaveFilePath is null) return;
+        var path = await RequestSaveFilePath("plan.html");
+        if (path is null) return;
+        try
+        {
+            var html = PlanHtmlExporter.Generate(SqlText, VisualPlanNodes, PlanIssues, PlanSummaryText);
+            await File.WriteAllTextAsync(path, html, System.Text.Encoding.UTF8);
+            QueryStatusMessage = $"Plan exported to {Path.GetFileName(path)}.";
+        }
+        catch (Exception ex)
+        {
+            QueryStatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    private bool CanExportPlan() => VisualPlanNodes.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanExportCompare))]
+    private async Task ExportCompareToHtmlAsync()
+    {
+        if (RequestSaveFilePath is null) return;
+        var path = await RequestSaveFilePath("compare.html");
+        if (path is null) return;
+        try
+        {
+            var html = CompareHtmlExporter.Generate(
+                CompareQueryAText, CompareQueryBText,
+                CompareResultA, CompareResultB,
+                ComparePlanNodesA, ComparePlanNodesB);
+            await File.WriteAllTextAsync(path, html, System.Text.Encoding.UTF8);
+            CompareStatusMessage = $"Report saved to {Path.GetFileName(path)}.";
+        }
+        catch (Exception ex)
+        {
+            CompareStatusMessage = $"Export failed: {ex.Message}";
+        }
+    }
+
+    private bool CanExportCompare() => CompareHasResults;
+
+    private static void PopulateComparePlanNodes(
+        ObservableCollection<PlanNodeVisualItemViewModel> target,
+        ExecutionPlan plan)
+    {
+        target.Clear();
+        if (plan.Root is null) return;
+        var rootCost = plan.Root.TotalCost;
+        var rootTime = plan.Root.ActualTotalTimeMs;
+        foreach (var (node, depth) in FlattenPlan(plan.Root))
+        {
+            var nodeIssues = plan.Issues
+                .Where(i => i.PlanNodeId == node.Id)
+                .Select(PlanIssueItemViewModel.FromIssue)
+                .ToList();
+            target.Add(PlanNodeVisualItemViewModel.FromNode(node, depth, rootCost, rootTime, nodeIssues));
         }
     }
 
@@ -1454,6 +1671,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
                 ErrorMessage = request.ErrorMessage
             });
         }
+
+        public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
     }
 
     private sealed class DesignSnippetService : ISnippetService

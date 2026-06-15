@@ -54,6 +54,22 @@ public sealed class HistoryService(AppDbContext dbContext) : IHistoryService
         return ToDomain(entity);
     }
 
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var idString = id.ToString();
+        var entity = await dbContext.QueryHistory
+            .FirstOrDefaultAsync(history => history.Id == idString, cancellationToken);
+
+        if (entity is null)
+        {
+            return false;
+        }
+
+        dbContext.QueryHistory.Remove(entity);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static QueryHistoryEntry ToDomain(QueryHistoryEntity entity)
     {
         return new QueryHistoryEntry

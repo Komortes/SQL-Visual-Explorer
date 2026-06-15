@@ -21,15 +21,16 @@ public sealed partial class MainWindow : Window
 
         _viewModel.RequestSaveFilePath = async defaultName =>
         {
+            var ext = System.IO.Path.GetExtension(defaultName).ToLowerInvariant();
+            FilePickerFileType[] types = ext == ".json"
+                ? [new FilePickerFileType("JSON") { Patterns = ["*.json"] }, new FilePickerFileType("All files") { Patterns = ["*"] }]
+                : [new FilePickerFileType("CSV") { Patterns = ["*.csv"] }, new FilePickerFileType("All files") { Patterns = ["*"] }];
+
             var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
             {
-                Title = "Export results",
+                Title = "Export",
                 SuggestedFileName = defaultName,
-                FileTypeChoices =
-                [
-                    new FilePickerFileType("CSV") { Patterns = ["*.csv"] },
-                    new FilePickerFileType("All files") { Patterns = ["*"] },
-                ]
+                FileTypeChoices = types
             });
             return file?.TryGetLocalPath();
         };

@@ -30,6 +30,10 @@ public sealed class PlanAnalyzerService : IPlanAnalyzerService
             AddRowEstimateMismatchIssue(node, issues);
             AddSortIssue(node, issues);
             AddBitmapHeapScanInfo(node, issues);
+            AddHashBatchesIssue(node, issues);
+            AddMissingIndexHintIssue(node, issues);
+            AddFunctionInWhereIssue(node, issues);
+            AddImplicitCastIssue(node, issues);
 
             if (node.Id != executionPlan.Root.Id)
             {
@@ -179,6 +183,107 @@ public sealed class PlanAnalyzerService : IPlanAnalyzerService
             Title = "Bitmap heap scan",
             Description = $"{node.Label} uses a bitmap heap scan.",
             Recommendation = "This can be normal. For highly selective queries, check whether an index-only scan is possible.",
+            PlanNodeId = node.Id
+        });
+    }
+
+    private static void AddHashBatchesIssue(PlanNode node, List<PlanIssue> issues)
+    {
+        if (node.NodeType != NodeType.HashJoin || node.HashBatches is null or <= 1)
+        {
+            return;
+        }
+
+        issues.Add(new PlanIssue
+        {
+            Code = "HASH_BATCHES",
+            Severity = IssueSeverity.Warning,
+            Title = "Hash join spills to disk",
+            Description = $"{node.Label} used {node.HashBatches} hash batches, meaning the hash table did not fit in memory.",
+            Recommendation = "Increase work_mem for this session or simplify the join to reduce the number of rows processed.",
+            PlanNodeId = node.Id
+        });
+    }
+
+    private static void AddMissingIndexHintIssue(PlanNode node, List<PlanIssue> issues)
+    {
+        if (node.NodeType != NodeType.SeqScan || string.IsNullOrEmpty(node.Filter))
+        {
+            return;
+        }
+
+        var rowCount = GetBestRowCount(node);
+
+        if (rowCount < SortRowThreshold)
+        {
+            return;
+        }
+
+        issues.Add(new PlanIssue
+        {
+            Code = "MISSING_INDEX_HINT",
+            Severity = IssueSeverity.Warning,
+            Title = "Sequential scan with filter — possible missing index",
+            Description = $"{node.Label} scans ~{rowCount:N0} row(s) and applies: {node.Filter}",
+            Recommendation = "Consider adding an index on the filtered column(s) to avoid a full table scan.",
+            PlanNodeId = node.Id
+        });
+    }
+
+    private static readonly string[] FunctionPatterns =
+    [
+        "lower(", "upper(", "length(", "date(", "extract(", "to_char(", "to_date(",
+        "substring(", "trim(", "ltrim(", "rtrim(", "coalesce(", "nullif(", "replace("
+    ];
+
+    private static void AddFunctionInWhereIssue(PlanNode node, List<PlanIssue> issues)
+    {
+        if (string.IsNullOrEmpty(node.Filter))
+        {
+            return;
+        }
+
+        var filterLower = node.Filter.ToLowerInvariant();
+        var matchedFunction = Array.Find(FunctionPatterns, p => filterLower.Contains(p));
+
+        if (matchedFunction is null)
+        {
+            return;
+        }
+
+        issues.Add(new PlanIssue
+        {
+            Code = "FUNCTION_IN_WHERE",
+            Severity = IssueSeverity.Info,
+            Title = "Function call in filter may prevent index use",
+            Description = $"{node.Label} filter contains a function call: {node.Filter}",
+            Recommendation = "If the column is indexed, the function prevents index use. Consider a functional index: CREATE INDEX ON table (lower(column)).",
+            PlanNodeId = node.Id
+        });
+    }
+
+    private static void AddImplicitCastIssue(PlanNode node, List<PlanIssue> issues)
+    {
+        if (string.IsNullOrEmpty(node.Filter))
+        {
+            return;
+        }
+
+        var hasCast = node.Filter.Contains("::", StringComparison.Ordinal)
+            || node.Filter.Contains("CAST(", StringComparison.OrdinalIgnoreCase);
+
+        if (!hasCast)
+        {
+            return;
+        }
+
+        issues.Add(new PlanIssue
+        {
+            Code = "IMPLICIT_CAST",
+            Severity = IssueSeverity.Info,
+            Title = "Type cast in filter may prevent index use",
+            Description = $"{node.Label} filter contains a type cast: {node.Filter}",
+            Recommendation = "Casting an indexed column prevents index use. Ensure the comparison value matches the column type without casting.",
             PlanNodeId = node.Id
         });
     }

@@ -44,6 +44,8 @@ public sealed class PostgreSqlExplainParser : IExplainParser
             ActualTotalTimeMs = GetDouble(element, "Actual Total Time"),
             EstimatedRows = GetLong(element, "Plan Rows"),
             ActualRows = GetLong(element, "Actual Rows"),
+            Filter = GetString(element, "Filter"),
+            HashBatches = GetInt(element, "Hash Batches"),
             Children = children
         };
     }
@@ -107,6 +109,13 @@ public sealed class PostgreSqlExplainParser : IExplainParser
     private static long? GetLong(JsonElement element, string propertyName)
     {
         return TryGetProperty(element, propertyName, out var property) && property.TryGetInt64(out var value)
+            ? value
+            : null;
+    }
+
+    private static int? GetInt(JsonElement element, string propertyName)
+    {
+        return TryGetProperty(element, propertyName, out var property) && property.TryGetInt32(out var value)
             ? value
             : null;
     }

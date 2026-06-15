@@ -11,6 +11,7 @@
   <Window.KeyBindings>
     <KeyBinding Gesture="Ctrl+Return" Command="{Binding RunQueryCommand}" />
     <KeyBinding Gesture="Ctrl+Shift+Return" Command="{Binding ExplainAnalyzeQueryCommand}" />
+    <KeyBinding Gesture="Ctrl+OemQuestion" Command="{Binding OpenSnippetsPopupCommand}" />
   </Window.KeyBindings>
   <Window.Styles>
     <Style Selector="TextBlock">
@@ -211,6 +212,8 @@
                           Command="{Binding SaveCurrentQueryAsSnippetCommand}" />
                 <MenuItem Header="Export results to CSV"
                           Command="{Binding ExportResultsToCsvCommand}" />
+                <MenuItem Header="Export results to JSON"
+                          Command="{Binding ExportResultsToJsonCommand}" />
                 <Separator />
                 <MenuItem Header="About SQL Visual Explorer"
                           Command="{Binding ShowAboutCommand}" />
@@ -356,6 +359,8 @@
                         Command="{Binding ZoomInCommand}" />
                 <Button Content="fit" Width="36" Height="26" Padding="0" CornerRadius="5"
                         Command="{Binding ZoomFitCommand}" />
+                <Button Content="Export HTML" Height="26" Padding="10,0" CornerRadius="5"
+                        Command="{Binding ExportPlanToHtmlCommand}" />
                 <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
                   <Border Width="8" Height="8" CornerRadius="4" Background="#7BD88F" VerticalAlignment="Center" />
                   <TextBlock Text="OK" FontSize="10" Foreground="#91A0AD" VerticalAlignment="Center"/>
@@ -786,7 +791,7 @@
               Grid.RowSpan="2"
               Classes="panel content-view"
               IsVisible="{Binding IsHistoryVisible}">
-        <Grid RowDefinitions="Auto,*">
+        <Grid RowDefinitions="Auto,Auto,*">
           <Grid ColumnDefinitions="*,Auto">
             <TextBlock Text="Recent Queries" FontSize="14" FontWeight="SemiBold" />
             <Button Grid.Column="1"
@@ -796,7 +801,22 @@
                     Command="{Binding LoadHistoryCommand}" />
           </Grid>
 
-          <ScrollViewer Grid.Row="1" Margin="0,12,0,0">
+          <Border Grid.Row="1" Margin="0,10,0,0" Padding="10,8"
+                  Background="#0F1419" BorderBrush="#26313A" BorderThickness="1" CornerRadius="6">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+              <TextBox Text="{Binding HistoryFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       Watermark="Search SQL or connection…" FontSize="12" MinHeight="0" />
+              <CheckBox Grid.Column="1" Content="Slow only" IsChecked="{Binding HistoryShowSlowOnly}"
+                        FontSize="12" VerticalAlignment="Center" />
+              <TextBox Grid.Column="2" Text="{Binding HistorySlowThresholdMs, Mode=TwoWay}"
+                       Width="64" FontSize="12" MinHeight="0" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="3" Text="ms" FontSize="12" Foreground="#91A0AD" VerticalAlignment="Center" />
+              <Button Grid.Column="4" Content="Apply" Height="28" Padding="10,0" CornerRadius="5"
+                      Command="{Binding ApplyHistoryFiltersCommand}" />
+            </Grid>
+          </Border>
+
+          <ScrollViewer Grid.Row="2" Margin="0,12,0,0">
             <ItemsControl ItemsSource="{Binding HistoryItems}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -807,7 +827,8 @@
                           BorderThickness="1"
                           CornerRadius="7">
                     <StackPanel Spacing="6">
-                      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+                      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8"
+                            IsVisible="{Binding IsPendingDelete, Converter={x:Static BoolConverters.Not}}">
                         <Border Padding="5,2"
                                 Background="{Binding StatusBadgeBackground}"
                                 CornerRadius="3"
@@ -844,6 +865,60 @@
                                 Padding="8,0"
                                 CornerRadius="4"
                                 Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                        <Button Grid.Column="6"
+                                Content="Copy SQL"
+                                Height="26"
+                                Padding="8,0"
+                                CornerRadius="4"
+                                Background="#151C22"
+                                BorderBrush="#2A3640"
+                                Command="{Binding DataContext.CopyHistoryItemSqlCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                        <Button Grid.Column="7"
+                                Content="→ Snippet"
+                                Height="26"
+                                Padding="8,0"
+                                CornerRadius="4"
+                                Background="#151C22"
+                                BorderBrush="#2A3640"
+                                Command="{Binding DataContext.AddHistoryItemToSnippetsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                        <Button Grid.Column="8"
+                                Content="Delete"
+                                Height="26"
+                                Padding="8,0"
+                                CornerRadius="4"
+                                Background="Transparent"
+                                BorderBrush="#3A2020"
+                                Foreground="#FF8A7A"
+                                Command="{Binding DataContext.RequestDeleteHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                      </Grid>
+                      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                            IsVisible="{Binding IsPendingDelete}">
+                        <TextBlock Text="Delete this entry?"
+                                   FontSize="12"
+                                   Foreground="#91A0AD"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Content="Confirm delete"
+                                Height="26"
+                                Padding="8,0"
+                                CornerRadius="4"
+                                Background="Transparent"
+                                BorderBrush="#3A2020"
+                                Foreground="#FF8A7A"
+                                Command="{Binding DataContext.DeleteHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                        <Button Grid.Column="2"
+                                Content="Cancel"
+                                Height="26"
+                                Padding="8,0"
+                                CornerRadius="4"
+                                Background="#17212A"
+                                BorderBrush="#2A3640"
+                                Command="{Binding DataContext.CancelDeleteHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 CommandParameter="{Binding}" />
                       </Grid>
 
@@ -1031,10 +1106,10 @@
               Grid.RowSpan="2"
               Classes="panel content-view"
               IsVisible="{Binding IsCompareVisible}">
-        <Grid RowDefinitions="Auto,Auto,*">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
 
           <!-- header row -->
-          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10" Margin="0,0,0,16">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10" Margin="0,0,0,16">
             <TextBlock Text="Compare Queries"
                        FontSize="14"
                        FontWeight="SemiBold"
@@ -1053,6 +1128,15 @@
                     BorderBrush="#2A3640"
                     IsEnabled="{Binding !IsCompareRunning}"
                     Command="{Binding RunCompareCommand}" />
+                <Button Grid.Column="3"
+                        Content="Export Report"
+                        Height="28"
+                        Padding="10,0"
+                        CornerRadius="5"
+                        Background="#151C22"
+                        BorderBrush="#2A3640"
+                        IsEnabled="{Binding CompareHasResults}"
+                        Command="{Binding ExportCompareToHtmlCommand}" />
           </Grid>
 
           <!-- two SQL inputs -->
@@ -1236,6 +1320,64 @@
             </Border>
 
           </Grid>
+
+          <!-- Plan node trees -->
+          <Grid Grid.Row="3" ColumnDefinitions="*,12,*" Margin="0,10,0,0"
+                IsVisible="{Binding CompareHasResults}">
+            <Border Background="#0F1419" BorderBrush="#26313A" BorderThickness="1" CornerRadius="8" Padding="12">
+              <Grid RowDefinitions="Auto,*">
+                <TextBlock Text="Query A — Plan" FontSize="11" FontWeight="SemiBold" Foreground="#91A0AD" Margin="0,0,0,8"/>
+                <ScrollViewer Grid.Row="1" MaxHeight="240">
+                  <ItemsControl ItemsSource="{Binding ComparePlanNodesA}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Margin="0,0,0,2" Padding="6,4" Background="{Binding SelectionBackground}"
+                                CornerRadius="3">
+                          <Grid ColumnDefinitions="*,72,80,30">
+                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="{Binding TreeIndentMargin}">
+                              <Border Width="6" Height="6" CornerRadius="3" Background="{Binding AccentColor}" VerticalAlignment="Center"/>
+                              <TextBlock Text="{Binding Label}" FontFamily="Menlo,Consolas,monospace" FontSize="11"
+                                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding CostCell}" FontSize="10" Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding TimeCell}" FontSize="10" Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="3" Text="{Binding IssueGlyph}" FontSize="11" FontWeight="Bold" Foreground="{Binding IssueColor}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
+            </Border>
+            <Border Grid.Column="2" Background="#0F1419" BorderBrush="#26313A" BorderThickness="1" CornerRadius="8" Padding="12">
+              <Grid RowDefinitions="Auto,*">
+                <TextBlock Text="Query B — Plan" FontSize="11" FontWeight="SemiBold" Foreground="#91A0AD" Margin="0,0,0,8"/>
+                <ScrollViewer Grid.Row="1" MaxHeight="240">
+                  <ItemsControl ItemsSource="{Binding ComparePlanNodesB}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Margin="0,0,0,2" Padding="6,4" Background="{Binding SelectionBackground}"
+                                CornerRadius="3">
+                          <Grid ColumnDefinitions="*,72,80,30">
+                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="{Binding TreeIndentMargin}">
+                              <Border Width="6" Height="6" CornerRadius="3" Background="{Binding AccentColor}" VerticalAlignment="Center"/>
+                              <TextBlock Text="{Binding Label}" FontFamily="Menlo,Consolas,monospace" FontSize="11"
+                                         TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding CostCell}" FontSize="10" Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding TimeCell}" FontSize="10" Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="3" Text="{Binding IssueGlyph}" FontSize="11" FontWeight="Bold" Foreground="{Binding IssueColor}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </Grid>
+            </Border>
+          </Grid>
+
         </Grid>
       </Border>
 
@@ -1346,5 +1488,46 @@
         </Grid>
       </Border>
     </Grid>
+    <!-- Snippets quick-search popup -->
+    <Panel Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Grid.ColumnSpan="2"
+           IsVisible="{Binding IsSnippetsPopupVisible}"
+           ZIndex="100">
+      <Rectangle Fill="#000000" Opacity="0.55" />
+      <Border MaxWidth="560" MaxHeight="460"
+              HorizontalAlignment="Center" VerticalAlignment="Center"
+              Background="#141A20" BorderBrush="#2A3640" BorderThickness="1" CornerRadius="10"
+              Padding="16">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <TextBox Text="{Binding SnippetsPopupSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Watermark="Search snippets…" FontSize="14" />
+            <Button Grid.Column="1" Content="✕" Width="36" Height="36" Margin="8,0,0,0"
+                    Command="{Binding CloseSnippetsPopupCommand}" />
+          </Grid>
+          <ScrollViewer Grid.Row="1">
+            <ItemsControl ItemsSource="{Binding PopupSnippets}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Padding="0" Background="Transparent" BorderThickness="0"
+                          Command="{Binding DataContext.OpenSnippetFromPopupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                          CommandParameter="{Binding}">
+                    <Border Margin="0,0,0,6" Padding="12,8"
+                            Background="#0F1419" BorderBrush="#26313A" BorderThickness="1" CornerRadius="6">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding SqlPreview}"
+                                   FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                   Foreground="#91A0AD" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Border>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Panel>
   </Grid>
 </Window>
