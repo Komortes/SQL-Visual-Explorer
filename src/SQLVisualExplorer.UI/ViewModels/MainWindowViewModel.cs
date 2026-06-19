@@ -325,6 +325,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<PlanIssueItemViewModel> PlanIssues { get; } = [];
 
+    public ObservableCollection<PlanNodeRowViewModel> PlanTreeRoots { get; } = [];
+
     public ObservableCollection<PlanIssueItemViewModel> SelectedPlanNodeIssues { get; } = [];
 
     public ObservableCollection<QueryHistoryItemViewModel> HistoryItems { get; } = [];
@@ -561,6 +563,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ResultColumnsView.Clear();
         ResultRows.Clear();
         VisualPlanNodes.Clear();
+        PlanTreeRoots.Clear();
         PlanIssues.Clear();
         SelectedPlanNodeIssues.Clear();
         ResultHeaderText = string.Empty;
@@ -639,6 +642,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ResultRows.Clear();
         VisualPlanNodes.Clear();
         GraphEdges.Clear();
+        PlanTreeRoots.Clear();
         PlanIssues.Clear();
         SelectedPlanNodeIssues.Clear();
         ResultHeaderText = string.Empty;
@@ -680,7 +684,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
             PlanTreeHeaderText = $"Plan ({flattenedNodes.Count} node(s))";
 
             if (plan.Root is not null)
+            {
                 ApplyGraphLayout(plan.Root);
+                BuildPlanTree(plan.Root, issueItemsByNodeId);
+            }
             SelectPlanNode(VisualPlanNodes.FirstOrDefault());
             ExportResultsToCsvCommand.NotifyCanExecuteChanged();
             QueryStatusMessage = $"{label} returned {flattenedNodes.Count} plan node(s), {plan.Issues.Count} issue(s) in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.";
@@ -760,6 +767,32 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsPlanTableVisible = false;
         IsPlanGraphVisible = false;
         IsPlanFlamegraphVisible = true;
+    }
+
+    private void BuildPlanTree(
+        PlanNode root,
+        IReadOnlyDictionary<Guid, IReadOnlyList<PlanIssueItemViewModel>> issueIndex)
+    {
+        PlanTreeRoots.Clear();
+        PlanTreeRoots.Add(PlanNodeRowViewModel.FromNode(root, root.TotalCost, root.ActualTotalTimeMs, issueIndex));
+    }
+
+    [RelayCommand]
+    private void SelectPlanTreeNode(PlanNodeRowViewModel? node)
+    {
+        if (node is null) return;
+        var visualNode = VisualPlanNodes.FirstOrDefault(n => n.NodeId == node.NodeId);
+        SelectPlanNode(visualNode);
+        ApplyTreeSelection(PlanTreeRoots, node.NodeId);
+    }
+
+    private static void ApplyTreeSelection(IEnumerable<PlanNodeRowViewModel> nodes, Guid selectedId)
+    {
+        foreach (var n in nodes)
+        {
+            n.IsSelected = n.NodeId == selectedId;
+            ApplyTreeSelection(n.Children, selectedId);
+        }
     }
 
     private bool CanRunQuery()

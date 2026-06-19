@@ -390,61 +390,76 @@
                   Margin="0,12,0,0"
                   RowDefinitions="Auto,*"
                   IsVisible="{Binding IsPlanTableVisible}">
-              <Grid ColumnDefinitions="*,84,108,96,40" Margin="9,0,9,6">
+              <Grid ColumnDefinitions="*,84,108,96,40" Margin="36,0,4,6">
                 <TextBlock Text="Operation" FontSize="11" Foreground="#6F7E89" />
                 <TextBlock Grid.Column="1" Text="Cost" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Right" />
                 <TextBlock Grid.Column="2" Text="Rows" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Right" />
                 <TextBlock Grid.Column="3" Text="Time" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Right" />
                 <TextBlock Grid.Column="4" Text="⚠" FontSize="11" Foreground="#6F7E89" HorizontalAlignment="Center" />
               </Grid>
-              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding VisualPlanNodes}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Padding="0"
-                              Margin="0,0,0,3"
-                              Background="Transparent"
-                              BorderThickness="0"
-                              HorizontalAlignment="Stretch"
-                              HorizontalContentAlignment="Stretch"
-                              Command="{Binding DataContext.SelectPlanNodeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                              CommandParameter="{Binding}">
-                        <Border Background="{Binding SelectionBackground}"
-                                BorderBrush="{Binding SelectionBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="5"
-                                Padding="8,5">
-                          <Grid ColumnDefinitions="*,84,108,96,40">
-                            <StackPanel Orientation="Horizontal" Spacing="7" Margin="{Binding TreeIndentMargin}">
-                              <Border Width="8" Height="8" CornerRadius="4"
-                                      Background="{Binding AccentColor}" VerticalAlignment="Center" />
-                              <TextBlock Text="{Binding Label}"
-                                         FontFamily="Menlo, Consolas, monospace"
-                                         FontSize="12"
-                                         Foreground="#E7ECEF"
-                                         TextTrimming="CharacterEllipsis"
-                                         VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" Text="{Binding CostCell}"
-                                       FontFamily="Menlo, Consolas, monospace" FontSize="11"
-                                       Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="{Binding RowsCell}"
-                                       FontFamily="Menlo, Consolas, monospace" FontSize="11"
-                                       Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="3" Text="{Binding TimeCell}"
-                                       FontFamily="Menlo, Consolas, monospace" FontSize="11"
-                                       Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="4" Text="{Binding IssueGlyph}"
-                                       FontSize="12" FontWeight="Bold"
-                                       Foreground="{Binding IssueColor}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                          </Grid>
-                        </Border>
-                      </Button>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </ScrollViewer>
+              <TreeView Grid.Row="1"
+                        ItemsSource="{Binding PlanTreeRoots}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0">
+                <TreeView.Styles>
+                  <Style Selector="TreeViewItem">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                  </Style>
+                </TreeView.Styles>
+                <TreeView.Styles>
+                  <Style Selector="TreeViewItem">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="ItemsSource" Value="{Binding Children}" />
+                  </Style>
+                </TreeView.Styles>
+                <TreeView.ItemTemplate>
+                  <DataTemplate>
+                    <Button Padding="0"
+                            Margin="0,0,0,3"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            Command="{Binding DataContext.SelectPlanTreeNodeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}">
+                      <Border Background="{Binding SelectionBackground}"
+                              BorderBrush="{Binding SelectionBorderBrush}"
+                              BorderThickness="1"
+                              CornerRadius="5"
+                              Padding="8,5">
+                        <Grid ColumnDefinitions="*,84,108,96,40">
+                          <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Border Width="8" Height="8" CornerRadius="4"
+                                    Background="{Binding AccentColor}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Label}"
+                                       FontFamily="Menlo, Consolas, monospace"
+                                       FontSize="12"
+                                       Foreground="#E7ECEF"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Text="{Binding CostCell}"
+                                     FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                     Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="2" Text="{Binding RowsCell}"
+                                     FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                     Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="3" Text="{Binding TimeCell}"
+                                     FontFamily="Menlo, Consolas, monospace" FontSize="11"
+                                     Foreground="#91A0AD" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                          <TextBlock Grid.Column="4" Text="{Binding IssueGlyph}"
+                                     FontSize="12" FontWeight="Bold"
+                                     Foreground="{Binding IssueColor}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                      </Border>
+                    </Button>
+                  </DataTemplate>
+                </TreeView.ItemTemplate>
+              </TreeView>
             </Grid>
 
             <controls:PlanGraphControl

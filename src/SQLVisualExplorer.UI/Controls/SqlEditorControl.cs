@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using Avalonia.Input;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.Highlighting;
@@ -16,6 +17,7 @@ public sealed class SqlEditorControl : UserControl
 
     private readonly TextEditor _editor;
     private bool _isUpdatingFromEditor;
+    private bool _isAttached;
 
     public string? SqlText
     {
@@ -30,6 +32,7 @@ public sealed class SqlEditorControl : UserControl
             FontFamily = new FontFamily("Menlo, Consolas, monospace"),
             FontSize = 13,
             ShowLineNumbers = true,
+            IsReadOnly = false,
             Background = new SolidColorBrush(Color.Parse("#0A0F13")),
             Foreground = new SolidColorBrush(Color.Parse("#CFE3F2")),
             BorderThickness = new Thickness(0),
@@ -44,14 +47,34 @@ public sealed class SqlEditorControl : UserControl
 
         _editor.TextChanged += OnEditorTextChanged;
 
+        // Forward pointer press to TextArea so clicking anywhere gives keyboard focus.
+        AddHandler(PointerPressedEvent, OnPointerPressed, handledEventsToo: true);
+
         Content = _editor;
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _isAttached = true;
+
+        // Re-sync text after the editor is in the visual tree and ready to render.
+        var text = SqlText ?? string.Empty;
+        if (_editor.Text != text)
+            _editor.Text = text;
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _isAttached = false;
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
 
-        if (change.Property == SqlTextProperty && !_isUpdatingFromEditor)
+        if (change.Property == SqlTextProperty && !_isUpdatingFromEditor && _isAttached)
         {
             var newText = change.GetNewValue<string?>() ?? string.Empty;
             if (_editor.Text != newText)
@@ -70,5 +93,10 @@ public sealed class SqlEditorControl : UserControl
         {
             _isUpdatingFromEditor = false;
         }
+    }
+
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _editor.TextArea.Focus();
     }
 }
