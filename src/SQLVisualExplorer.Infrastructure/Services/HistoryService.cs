@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SQLVisualExplorer.Application.Services;
+using SQLVisualExplorer.Domain.Enums;
 using SQLVisualExplorer.Domain.Models;
 using SQLVisualExplorer.Infrastructure.Database;
 using SQLVisualExplorer.Infrastructure.Database.Entities;
@@ -32,6 +33,7 @@ public sealed class HistoryService(AppDbContext dbContext) : IHistoryService
         {
             Id = Guid.NewGuid().ToString(),
             ConnectionId = request.ConnectionId?.ToString(),
+            DatabaseType = request.DatabaseType?.ToString(),
             SqlText = request.SqlText,
             ExecutedAt = DateTime.UtcNow,
             DurationMs = request.Duration is null ? null : (long)Math.Round(request.Duration.Value.TotalMilliseconds),
@@ -77,6 +79,9 @@ public sealed class HistoryService(AppDbContext dbContext) : IHistoryService
             Id = Guid.Parse(entity.Id),
             ConnectionId = entity.ConnectionId is null ? null : Guid.Parse(entity.ConnectionId),
             ConnectionName = entity.Connection?.Name ?? "Unknown connection",
+            DatabaseType = Enum.TryParse<DatabaseType>(entity.DatabaseType ?? entity.Connection?.DatabaseType, out var databaseType)
+                    ? databaseType
+                    : null,
             SqlText = entity.SqlText,
             ExecutedAt = new DateTimeOffset(DateTime.SpecifyKind(entity.ExecutedAt, DateTimeKind.Utc)),
             Duration = entity.DurationMs is null ? null : TimeSpan.FromMilliseconds(entity.DurationMs.Value),

@@ -1,7 +1,9 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SQLVisualExplorer.Application.Services;
+using SQLVisualExplorer.Domain.Enums;
 using SQLVisualExplorer.Infrastructure.Database;
+using SQLVisualExplorer.Infrastructure.Database.Entities;
 using SQLVisualExplorer.Infrastructure.Services;
 
 namespace SQLVisualExplorer.Infrastructure.Tests;
@@ -53,6 +55,41 @@ public sealed class HistoryServiceTests
         Assert.Equal("syntax error", stored.ErrorMessage);
     }
 
+    [Fact]
+    public async Task RecordAsync_ReturnsSavedPlanAndConnectionDatabaseType()
+    {
+        await using var fixture = await HistoryServiceFixture.CreateAsync();
+        var connectionId = Guid.NewGuid();
+
+        await using (var dbContext = new AppDbContext(fixture.Options))
+        {
+            dbContext.Connections.Add(new ConnectionEntity
+            {
+                Id = connectionId.ToString(),
+                Name = "Local MySQL",
+                DatabaseType = DatabaseType.MySql.ToString(),
+                Database = "app_db",
+                CreatedAt = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        var service = fixture.CreateService();
+        await service.RecordAsync(new RecordQueryHistoryRequest
+        {
+            ConnectionId = connectionId,
+            DatabaseType = DatabaseType.MySql,
+            SqlText = "select * from users",
+            Succeeded = true,
+            ExplainJson = "{\"query_block\":{}}"
+        });
+
+        var stored = Assert.Single(await service.GetRecentAsync());
+
+        Assert.Equal(DatabaseType.MySql, stored.DatabaseType);
+        Assert.Equal("{\"query_block\":{}}", stored.ExplainJson);
+    }
+
     private sealed class HistoryServiceFixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
@@ -63,7 +100,7 @@ public sealed class HistoryServiceTests
             Options = options;
         }
 
-        private DbContextOptions<AppDbContext> Options { get; }
+        public DbContextOptions<AppDbContext> Options { get; }
 
         public static async Task<HistoryServiceFixture> CreateAsync()
         {

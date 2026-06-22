@@ -18,5 +18,8 @@ public sealed class UpdateConnectionRequest
 
     public string? Password { get; init; }
 
+    // Password changes are opt-in so metadata edits cannot erase an existing secret.
+    public bool UpdatePassword { get; init; }
+
     public bool UseSsl { get; init; }
 }

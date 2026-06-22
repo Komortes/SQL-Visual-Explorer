@@ -144,8 +144,13 @@ public sealed partial class PlanNodeVisualItemViewModel : ObservableObject
         var actualRows = node.ActualRows is null ? "n/a" : node.ActualRows.Value.ToString("N0");
         var cost = node.TotalCost is null ? "n/a" : node.TotalCost.Value.ToString("N2");
         var actualTime = node.ActualTotalTimeMs is null ? "n/a" : $"{node.ActualTotalTimeMs.Value:N2} ms";
+        var loops = node.ActualLoops is null ? "n/a" : node.ActualLoops.Value.ToString("N0");
+        var relation = string.IsNullOrWhiteSpace(node.RelationName) ? "n/a" : node.RelationName;
+        var index = string.IsNullOrWhiteSpace(node.IndexName) ? "n/a" : node.IndexName;
+        var filter = string.IsNullOrWhiteSpace(node.Filter) ? "n/a" : node.Filter;
+        var join = string.IsNullOrWhiteSpace(node.JoinCondition) ? "n/a" : node.JoinCondition;
 
-        return $"Type: {node.NodeType}\nDepth: {depth}\nEstimated cost: {cost}\nRelative cost: {costRatio:P0}\nEstimated rows: {estimatedRows}\nActual rows: {actualRows}\nActual time: {actualTime}";
+        return $"Type: {node.NodeType}\nDepth: {depth}\nRelation: {relation}\nIndex: {index}\nEstimated cost: {cost}\nRelative cost: {costRatio:P0}\nEstimated rows: {estimatedRows}\nActual rows: {actualRows}\nActual loops: {loops}\nActual time: {actualTime}\nFilter: {filter}\nJoin condition: {join}";
     }
 
     private static double CalculateFlameRatio(

@@ -49,6 +49,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         entity.Property(history => history.Id).HasColumnName("id");
         entity.Property(history => history.ConnectionId).HasColumnName("connection_id");
+        entity.Property(history => history.DatabaseType).HasColumnName("database_type");
         entity.Property(history => history.SqlText).HasColumnName("sql_text").IsRequired();
         entity.Property(history => history.ExecutedAt).HasColumnName("executed_at");
         entity.Property(history => history.DurationMs).HasColumnName("duration_ms");

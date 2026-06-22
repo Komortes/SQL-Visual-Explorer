@@ -1,3 +1,5 @@
+using SQLVisualExplorer.Domain.Enums;
+
 namespace SQLVisualExplorer.Domain.Models;
 
 public sealed class QueryHistoryEntry
@@ -7,6 +9,8 @@ public sealed class QueryHistoryEntry
     public Guid? ConnectionId { get; init; }
 
     public string ConnectionName { get; init; } = string.Empty;
+
+    public DatabaseType? DatabaseType { get; init; }
 
     public string SqlText { get; init; } = string.Empty;
 

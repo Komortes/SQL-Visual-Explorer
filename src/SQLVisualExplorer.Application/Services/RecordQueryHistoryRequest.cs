@@ -1,8 +1,12 @@
+using SQLVisualExplorer.Domain.Enums;
+
 namespace SQLVisualExplorer.Application.Services;
 
 public sealed class RecordQueryHistoryRequest
 {
     public Guid? ConnectionId { get; init; }
+
+    public DatabaseType? DatabaseType { get; init; }
 
     public string SqlText { get; init; } = string.Empty;
 

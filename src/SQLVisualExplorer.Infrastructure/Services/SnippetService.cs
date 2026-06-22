@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using SQLVisualExplorer.Application.Services;
 using SQLVisualExplorer.Domain.Models;
 using SQLVisualExplorer.Infrastructure.Database;
@@ -26,6 +27,7 @@ public sealed class SnippetService(AppDbContext dbContext) : ISnippetService
             Name = request.Name.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             SqlText = request.SqlText,
+            Tags = JsonSerializer.Serialize(NormalizeTags(request.Tags)),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -52,8 +54,35 @@ public sealed class SnippetService(AppDbContext dbContext) : ISnippetService
             Name = entity.Name,
             Description = entity.Description,
             SqlText = entity.SqlText,
-            Tags = entity.Tags,
+            Tags = ParseTags(entity.Tags),
             CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(entity.CreatedAt, DateTimeKind.Utc))
         };
+    }
+
+    private static IReadOnlyList<string> NormalizeTags(IEnumerable<string> tags)
+    {
+        return tags
+            .Select(tag => tag.Trim())
+            .Where(tag => tag.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<string> ParseTags(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags))
+        {
+            return [];
+        }
+
+        try
+        {
+            return NormalizeTags(JsonSerializer.Deserialize<string[]>(tags) ?? []);
+        }
+        catch (JsonException)
+        {
+            return NormalizeTags(tags.Split(',', StringSplitOptions.RemoveEmptyEntries));
+        }
     }
 }

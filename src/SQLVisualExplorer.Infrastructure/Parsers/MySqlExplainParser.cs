@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using SQLVisualExplorer.Domain.Enums;
 using SQLVisualExplorer.Domain.Models;
 
@@ -7,6 +8,22 @@ namespace SQLVisualExplorer.Infrastructure.Parsers;
 
 public sealed class MySqlExplainParser : IExplainParser
 {
+    private static readonly Regex ActualTimeRegex = new(
+        @"actual time=(?<start>\d+(?:\.\d+)?)\.\.(?<end>\d+(?:\.\d+)?)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex CostRegex = new(
+        @"cost=(?<start>\d+(?:\.\d+)?)\.\.(?<end>\d+(?:\.\d+)?)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex RowsRegex = new(
+        @"rows=(?<value>\d+(?:\.\d+)?)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex LoopsRegex = new(
+        @"loops=(?<value>\d+(?:\.\d+)?)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public bool Supports(DatabaseType databaseType)
     {
         return databaseType is DatabaseType.MySql or DatabaseType.MariaDb;
@@ -39,30 +56,94 @@ public sealed class MySqlExplainParser : IExplainParser
 
     private static ExecutionPlan ParseTextExplainAnalyze(string explainOutput)
     {
-        var lines = explainOutput
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
+        var roots = new List<AnalyzeNode>();
+        var stack = new Stack<(int Indent, AnalyzeNode Node)>();
+
+        foreach (var rawLine in explainOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var arrowIndex = rawLine.IndexOf("->", StringComparison.Ordinal);
+            if (arrowIndex < 0)
+            {
+                continue;
+            }
+
+            var indent = arrowIndex;
+            var node = ParseAnalyzeLine(rawLine[(arrowIndex + 2)..].Trim());
+
+            while (stack.Count > 0 && stack.Peek().Indent >= indent)
+            {
+                stack.Pop();
+            }
+
+            if (stack.Count == 0)
+            {
+                roots.Add(node);
+            }
+            else
+            {
+                stack.Peek().Node.Children.Add(node);
+            }
+
+            stack.Push((indent, node));
+        }
+
+        var root = roots.Count switch
+        {
+            0 => new PlanNode { NodeType = NodeType.Unknown, Label = "MySQL EXPLAIN ANALYZE" },
+            1 => ToPlanNode(roots[0]),
+            _ => new PlanNode
+            {
+                NodeType = NodeType.Unknown,
+                Label = "Query Plan",
+                Children = roots.Select(ToPlanNode).ToList()
+            }
+        };
 
         return new ExecutionPlan
         {
-            Root = new PlanNode
-            {
-                NodeType = NodeType.Unknown,
-                Label = lines.FirstOrDefault() ?? "MySQL EXPLAIN ANALYZE",
-                ActualTotalTimeMs = TryFindLastNumber(lines.FirstOrDefault()),
-                Children = lines.Skip(1).Select(line => new PlanNode
-                {
-                    NodeType = MapTextNodeType(line),
-                    Label = line,
-                    ActualTotalTimeMs = TryFindLastNumber(line)
-                }).ToList()
-            },
+            Root = root,
             RawJson = explainOutput
+        };
+    }
+
+    private static AnalyzeNode ParseAnalyzeLine(string line)
+    {
+        var labelEnd = line.IndexOf("  (", StringComparison.Ordinal);
+        var label = (labelEnd < 0 ? line : line[..labelEnd]).Trim();
+
+        return new AnalyzeNode
+        {
+            Label = label,
+            NodeType = MapTextNodeType(label),
+            TotalCost = GetMetricDecimal(CostRegex, line, "end"),
+            ActualTotalTimeMs = GetMetricDouble(ActualTimeRegex, line, "end"),
+            ActualRows = GetMetricLong(RowsRegex, line),
+            ActualLoops = GetMetricLong(LoopsRegex, line)
+        };
+    }
+
+    private static PlanNode ToPlanNode(AnalyzeNode node)
+    {
+        return new PlanNode
+        {
+            NodeType = node.NodeType,
+            Label = node.Label,
+            TotalCost = node.TotalCost,
+            ActualTotalTimeMs = node.ActualTotalTimeMs,
+            ActualRows = node.ActualRows,
+            ActualLoops = node.ActualLoops,
+            RelationName = TryExtractRelationName(node.Label),
+            Children = node.Children.Select(ToPlanNode).ToList()
         };
     }
 
     private static NodeType MapTextNodeType(string line)
     {
+        if (line.Contains("nested loop", StringComparison.OrdinalIgnoreCase))
+        {
+            return NodeType.NestedLoop;
+        }
+
         if (line.Contains("table scan", StringComparison.OrdinalIgnoreCase))
         {
             return NodeType.SeqScan;
@@ -73,11 +154,6 @@ public sealed class MySqlExplainParser : IExplainParser
             return NodeType.IndexScan;
         }
 
-        if (line.Contains("nested loop", StringComparison.OrdinalIgnoreCase))
-        {
-            return NodeType.NestedLoop;
-        }
-
         if (line.Contains("sort", StringComparison.OrdinalIgnoreCase))
         {
             return NodeType.Sort;
@@ -86,17 +162,35 @@ public sealed class MySqlExplainParser : IExplainParser
         return NodeType.Unknown;
     }
 
-    private static double? TryFindLastNumber(string? line)
+    private static decimal? GetMetricDecimal(Regex regex, string line, string group)
     {
-        if (string.IsNullOrWhiteSpace(line))
-        {
-            return null;
-        }
+        var match = regex.Match(line);
+        return match.Success && decimal.TryParse(match.Groups[group].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
+    }
 
-        var matches = System.Text.RegularExpressions.Regex.Matches(line, @"\d+(?:\.\d+)?");
-        return matches.Count == 0
-            ? null
-            : double.Parse(matches[^1].Value, CultureInfo.InvariantCulture);
+    private static double? GetMetricDouble(Regex regex, string line, string group)
+    {
+        var match = regex.Match(line);
+        return match.Success && double.TryParse(match.Groups[group].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
+    }
+
+    private static long? GetMetricLong(Regex regex, string line)
+    {
+        var match = regex.Match(line);
+        return match.Success && double.TryParse(match.Groups["value"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? (long)Math.Round(value, MidpointRounding.AwayFromZero)
+            : null;
+    }
+
+    private static string? TryExtractRelationName(string label)
+    {
+        const string onMarker = " on ";
+        var index = label.IndexOf(onMarker, StringComparison.OrdinalIgnoreCase);
+        return index < 0 ? null : label[(index + onMarker.Length)..].Trim();
     }
 
     private static PlanNode ParseQueryBlock(JsonElement queryBlock)
@@ -147,7 +241,10 @@ public sealed class MySqlExplainParser : IExplainParser
             NodeType = MapAccessType(accessType),
             Label = $"{accessType} on {tableName}",
             TotalCost = GetCost(table, "prefix_cost"),
-            EstimatedRows = GetLong(table, "rows_examined_per_scan") ?? GetLong(table, "rows_produced_per_join")
+            EstimatedRows = GetLong(table, "rows_examined_per_scan") ?? GetLong(table, "rows_produced_per_join"),
+            RelationName = tableName,
+            IndexName = GetString(table, "key"),
+            Filter = FirstNonEmpty(GetString(table, "attached_condition"), GetString(table, "index_condition"))
         };
     }
 
@@ -281,5 +378,21 @@ public sealed class MySqlExplainParser : IExplainParser
 
         property = default;
         return false;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    }
+
+    private sealed class AnalyzeNode
+    {
+        public NodeType NodeType { get; init; }
+        public string Label { get; init; } = string.Empty;
+        public decimal? TotalCost { get; init; }
+        public double? ActualTotalTimeMs { get; init; }
+        public long? ActualRows { get; init; }
+        public long? ActualLoops { get; init; }
+        public List<AnalyzeNode> Children { get; } = [];
     }
 }

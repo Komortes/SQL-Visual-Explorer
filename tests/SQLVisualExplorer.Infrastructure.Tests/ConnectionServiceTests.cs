@@ -120,10 +120,11 @@ public sealed class ConnectionServiceTests
     }
 
     [Fact]
-    public async Task CreateConnectionAsync_DoesNotPersistPassword()
+    public async Task CreateConnectionAsync_PersistsPasswordInSecretStore()
     {
         await using var fixture = await ConnectionServiceFixture.CreateAsync();
-        var service = fixture.CreateService();
+        var secretStore = new ConnectionServiceFixture.MemorySecretStore();
+        var service = fixture.CreateServiceWithSecretStore(secretStore);
 
         var created = await service.CreateConnectionAsync(new CreateConnectionRequest
         {
@@ -139,7 +140,62 @@ public sealed class ConnectionServiceTests
         var stored = await service.GetConnectionAsync(created.Id);
 
         Assert.NotNull(stored);
-        Assert.Null(stored.Password);
+        Assert.Equal("secret", stored.Password);
+        Assert.Equal("secret", await secretStore.LoadAsync($"connection/{created.Id}"));
+    }
+
+    [Fact]
+    public async Task UpdateConnectionAsync_PreservesPassword_WhenPasswordUpdateIsNotRequested()
+    {
+        await using var fixture = await ConnectionServiceFixture.CreateAsync();
+        var secretStore = new ConnectionServiceFixture.MemorySecretStore();
+        var service = fixture.CreateServiceWithSecretStore(secretStore);
+        var created = await service.CreateConnectionAsync(new CreateConnectionRequest
+        {
+            Name = "Local Postgres",
+            DatabaseType = DatabaseType.PostgreSql,
+            Database = "app_db",
+            Password = "secret"
+        });
+
+        var updated = await service.UpdateConnectionAsync(created.Id, new UpdateConnectionRequest
+        {
+            Name = "Renamed Postgres",
+            DatabaseType = DatabaseType.PostgreSql,
+            Database = "app_db"
+        });
+
+        Assert.NotNull(updated);
+        Assert.Equal("secret", updated.Password);
+        Assert.Equal("secret", await secretStore.LoadAsync($"connection/{created.Id}"));
+    }
+
+    [Fact]
+    public async Task UpdateConnectionAsync_DeletesPassword_WhenRequested()
+    {
+        await using var fixture = await ConnectionServiceFixture.CreateAsync();
+        var secretStore = new ConnectionServiceFixture.MemorySecretStore();
+        var service = fixture.CreateServiceWithSecretStore(secretStore);
+        var created = await service.CreateConnectionAsync(new CreateConnectionRequest
+        {
+            Name = "Local Postgres",
+            DatabaseType = DatabaseType.PostgreSql,
+            Database = "app_db",
+            Password = "secret"
+        });
+
+        var updated = await service.UpdateConnectionAsync(created.Id, new UpdateConnectionRequest
+        {
+            Name = "Local Postgres",
+            DatabaseType = DatabaseType.PostgreSql,
+            Database = "app_db",
+            Password = string.Empty,
+            UpdatePassword = true
+        });
+
+        Assert.NotNull(updated);
+        Assert.Null(updated.Password);
+        Assert.Null(await secretStore.LoadAsync($"connection/{created.Id}"));
     }
 
     private sealed class ConnectionServiceFixture : IAsyncDisposable
@@ -174,11 +230,38 @@ public sealed class ConnectionServiceTests
             return new ConnectionService(new AppDbContext(Options), drivers, new NullSecretStore());
         }
 
+        public ConnectionService CreateServiceWithSecretStore(ISecretStore secretStore, params IDatabaseDriver[] drivers)
+        {
+            return new ConnectionService(new AppDbContext(Options), drivers, secretStore);
+        }
+
         private sealed class NullSecretStore : SQLVisualExplorer.Application.Services.ISecretStore
         {
             public Task SaveAsync(string key, string secret, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task<string?> LoadAsync(string key, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
             public Task DeleteAsync(string key, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        }
+
+        public sealed class MemorySecretStore : ISecretStore
+        {
+            private readonly Dictionary<string, string> _secrets = new(StringComparer.Ordinal);
+
+            public Task SaveAsync(string key, string secret, CancellationToken cancellationToken = default)
+            {
+                _secrets[key] = secret;
+                return Task.CompletedTask;
+            }
+
+            public Task<string?> LoadAsync(string key, CancellationToken cancellationToken = default)
+            {
+                return Task.FromResult(_secrets.GetValueOrDefault(key));
+            }
+
+            public Task DeleteAsync(string key, CancellationToken cancellationToken = default)
+            {
+                _secrets.Remove(key);
+                return Task.CompletedTask;
+            }
         }
 
         public async ValueTask DisposeAsync()

@@ -73,11 +73,17 @@ public sealed class ConnectionService(
         Apply(entity, request);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        var password = NormalizeOptionalText(request.Password);
-        if (password is not null)
-            await secretStore.SaveAsync(SecretKey(entity.Id), password, cancellationToken);
-        else
-            await secretStore.DeleteAsync(SecretKey(entity.Id), cancellationToken);
+        var password = request.UpdatePassword
+            ? NormalizeOptionalText(request.Password)
+            : await secretStore.LoadAsync(SecretKey(entity.Id), cancellationToken);
+
+        if (request.UpdatePassword)
+        {
+            if (password is not null)
+                await secretStore.SaveAsync(SecretKey(entity.Id), password, cancellationToken);
+            else
+                await secretStore.DeleteAsync(SecretKey(entity.Id), cancellationToken);
+        }
 
         return ToDomain(entity, password);
     }

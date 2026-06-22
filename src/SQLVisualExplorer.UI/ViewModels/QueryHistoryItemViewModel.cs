@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SQLVisualExplorer.Domain.Enums;
 using SQLVisualExplorer.Domain.Models;
 
 namespace SQLVisualExplorer.UI.ViewModels;
@@ -11,6 +12,8 @@ public sealed partial class QueryHistoryItemViewModel : ObservableObject
     public Guid Id { get; init; }
 
     public string ConnectionName { get; init; } = string.Empty;
+
+    public DatabaseType? DatabaseType { get; init; }
 
     public string SqlPreview { get; init; } = string.Empty;
 
@@ -34,6 +37,10 @@ public sealed partial class QueryHistoryItemViewModel : ObservableObject
 
     public double? DurationMs { get; init; }
 
+    public string? ExplainOutput { get; init; }
+
+    public bool HasSavedPlan => !string.IsNullOrWhiteSpace(ExplainOutput) && DatabaseType is not null;
+
     public static QueryHistoryItemViewModel FromEntry(QueryHistoryEntry entry)
     {
         var (badgeText, badgeBg, badgeFg) = entry.Status switch
@@ -47,6 +54,7 @@ public sealed partial class QueryHistoryItemViewModel : ObservableObject
         {
             Id = entry.Id,
             ConnectionName = entry.ConnectionName,
+            DatabaseType = entry.DatabaseType,
             SqlText = entry.SqlText,
             SqlPreview = CreatePreview(entry.SqlText),
             ExecutedAt = entry.ExecutedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"),
@@ -58,6 +66,7 @@ public sealed partial class QueryHistoryItemViewModel : ObservableObject
             StatusBadgeBackground = badgeBg,
             StatusBadgeForeground = badgeFg,
             DurationMs = entry.Duration?.TotalMilliseconds,
+            ExplainOutput = entry.ExplainJson,
         };
     }
 

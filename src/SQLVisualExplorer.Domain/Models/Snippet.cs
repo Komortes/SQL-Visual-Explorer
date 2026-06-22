@@ -10,7 +10,7 @@ public sealed class Snippet
 
     public string SqlText { get; set; } = string.Empty;
 
-    public string? Tags { get; set; }
+    public IReadOnlyList<string> Tags { get; set; } = [];
 
     public DateTimeOffset CreatedAt { get; set; }
 }

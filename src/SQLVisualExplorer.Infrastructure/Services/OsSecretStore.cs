@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using System.Security.Cryptography;
 using System.Text;
 using SQLVisualExplorer.Application.Services;
 
@@ -135,7 +134,7 @@ public sealed class OsSecretStore : ISecretStore
         }
     }
 
-    // ── Linux: secret-tool → AES-GCM file fallback ──────────────────────────
+    // ── Linux: Secret Service ───────────────────────────────────────────────
 
     [UnsupportedOSPlatform("windows")]
     private static void SaveLinux(string key, string secret)
@@ -143,7 +142,9 @@ public sealed class OsSecretStore : ISecretStore
         var safeKey = SanitizeKey(key);
         if (TrySecretTool(secret, "store", $"--label={AppName}/{safeKey}", "app", AppName, "key", safeKey))
             return;
-        SaveFallbackFile(key, secret);
+
+        throw new InvalidOperationException(
+            "Linux Secret Service is unavailable. Install and unlock GNOME Keyring, KWallet, or another Secret Service provider before saving passwords.");
     }
 
     [UnsupportedOSPlatform("windows")]
@@ -151,8 +152,7 @@ public sealed class OsSecretStore : ISecretStore
     {
         var safeKey = SanitizeKey(key);
         var result  = RunSecretTool("lookup", "app", AppName, "key", safeKey);
-        if (result is not null) return result.Trim();
-        return LoadFallbackFile(key);
+        return result?.Trim();
     }
 
     [UnsupportedOSPlatform("windows")]
@@ -160,8 +160,6 @@ public sealed class OsSecretStore : ISecretStore
     {
         var safeKey = SanitizeKey(key);
         RunSecretTool("clear", "app", AppName, "key", safeKey);
-        var path = FallbackPath(key);
-        if (File.Exists(path)) File.Delete(path);
     }
 
     private static bool TrySecretTool(string secret, params string[] argv)
@@ -210,83 +208,6 @@ public sealed class OsSecretStore : ISecretStore
             return proc.ExitCode == 0 ? output : null;
         }
         catch { return null; }
-    }
-
-    // AES-256-GCM fallback for Linux without secret-tool.
-    // Key is user+machine-specific (not secret), real protection is file permissions (0600).
-    private static byte[] DeriveKey()
-    {
-        var material = Encoding.UTF8.GetBytes(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-            + "|sql-visual-explorer|v1");
-        return SHA256.HashData(material);
-    }
-
-    [UnsupportedOSPlatform("windows")]
-    private static string FallbackDir() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        $".{AppName}", "secrets");
-
-    [UnsupportedOSPlatform("windows")]
-    private static string FallbackPath(string key) =>
-        Path.Combine(FallbackDir(), SanitizeKey(key) + ".aes");
-
-    [UnsupportedOSPlatform("windows")]
-    private static void SaveFallbackFile(string key, string secret)
-    {
-        var dir = FallbackDir();
-        Directory.CreateDirectory(dir);
-        File.SetUnixFileMode(dir,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-
-        var plain      = Encoding.UTF8.GetBytes(secret);
-        var nonce      = RandomNumberGenerator.GetBytes(12);
-        var tag        = new byte[16];
-        var ciphertext = new byte[plain.Length];
-
-        using var aes = new AesGcm(DeriveKey(), 16);
-        aes.Encrypt(nonce, plain, ciphertext, tag);
-
-        // Layout on disk: [12-byte nonce][16-byte tag][ciphertext]
-        var blob = new byte[28 + ciphertext.Length];
-        nonce.CopyTo(blob, 0);
-        tag.CopyTo(blob, 12);
-        ciphertext.CopyTo(blob, 28);
-
-        using var fs = File.Open(FallbackPath(key), new FileStreamOptions
-        {
-            Mode           = FileMode.Create,
-            Access         = FileAccess.Write,
-            Share          = FileShare.None,
-            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
-        });
-        fs.Write(blob);
-    }
-
-    [UnsupportedOSPlatform("windows")]
-    private static string? LoadFallbackFile(string key)
-    {
-        var path = FallbackPath(key);
-        if (!File.Exists(path)) return null;
-
-        var blob = File.ReadAllBytes(path);
-        if (blob.Length < 28) return null;
-
-        var nonce      = blob[..12];
-        var tag        = blob[12..28];
-        var ciphertext = blob[28..];
-        var plaintext  = new byte[ciphertext.Length];
-
-        try
-        {
-            using var aes = new AesGcm(DeriveKey(), 16);
-            aes.Decrypt(nonce, ciphertext, tag, plaintext);
-            return Encoding.UTF8.GetString(plaintext);
-        }
-        catch (CryptographicException)
-        {
-            return null;
-        }
     }
 
     private static string SanitizeKey(string key) =>

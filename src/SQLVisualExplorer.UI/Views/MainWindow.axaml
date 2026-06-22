@@ -667,7 +667,7 @@
             IsVisible="{Binding IsConnectionsVisible}">
         <Border Classes="panel">
           <StackPanel Spacing="12">
-            <TextBlock Text="New Connection" FontSize="14" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ConnectionFormTitle}" FontSize="14" FontWeight="SemiBold" />
 
             <StackPanel Spacing="6">
               <TextBlock Text="Name" FontSize="12" Foreground="#91A0AD" />
@@ -715,16 +715,24 @@
             <CheckBox Content="Use SSL" IsChecked="{Binding NewConnectionUseSsl}"
                       IsVisible="{Binding !IsLocalDatabaseConnection}" />
 
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+            <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="10">
               <Button Content="Test Connection"
                       Height="36"
                       HorizontalAlignment="Stretch"
                       Command="{Binding TestConnectionCommand}" />
               <Button Grid.Column="1"
-                      Content="Save Connection"
+                      Content="{Binding SaveConnectionButtonText}"
                       Height="36"
                       HorizontalAlignment="Stretch"
                       Command="{Binding SaveConnectionCommand}" />
+              <Button Grid.Column="2"
+                      Content="Cancel"
+                      Height="36"
+                      Padding="12,0"
+                      Background="#17212A"
+                      BorderBrush="#2A3640"
+                      IsVisible="{Binding IsEditingConnection}"
+                      Command="{Binding CancelConnectionEditCommand}" />
             </Grid>
 
             <TextBlock Text="{Binding ConnectionStatusMessage}"
@@ -776,20 +784,29 @@
                                    FontSize="12"
                                    Foreground="#91A0AD" />
 
-                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8"
                               IsVisible="{Binding IsPendingDelete, Converter={x:Static BoolConverters.Not}}">
                           <TextBlock Text="{Binding Database}"
                                      FontSize="12"
                                      Foreground="#C6D0D8"
                                      VerticalAlignment="Center" />
                           <Button Grid.Column="1"
+                                  Content="Edit"
+                                  Height="28"
+                                  Padding="10,0"
+                                  CornerRadius="5"
+                                  Background="#17212A"
+                                  BorderBrush="#2A3640"
+                                  Command="{Binding DataContext.EditConnectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}" />
+                          <Button Grid.Column="2"
                                   Content="Connect"
                                   Height="28"
                                   Padding="10,0"
                                   CornerRadius="5"
                                   Command="{Binding DataContext.SelectConnectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                   CommandParameter="{Binding}" />
-                          <Button Grid.Column="2"
+                          <Button Grid.Column="3"
                                   Content="Delete"
                                   Height="28"
                                   Padding="10,0"
@@ -876,7 +893,7 @@
                           BorderThickness="1"
                           CornerRadius="7">
                     <StackPanel Spacing="6">
-                      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8"
+                      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8"
                             IsVisible="{Binding IsPendingDelete, Converter={x:Static BoolConverters.Not}}">
                         <Border Padding="5,2"
                                 Background="{Binding StatusBadgeBackground}"
@@ -916,6 +933,16 @@
                                 Command="{Binding DataContext.OpenHistoryItemCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 CommandParameter="{Binding}" />
                         <Button Grid.Column="6"
+                                Content="Plan"
+                                Height="26"
+                                Padding="8,0"
+                                CornerRadius="4"
+                                Background="#17212A"
+                                BorderBrush="#2A3640"
+                                IsVisible="{Binding HasSavedPlan}"
+                                Command="{Binding DataContext.OpenHistoryPlanCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}" />
+                        <Button Grid.Column="7"
                                 Content="Copy SQL"
                                 Height="26"
                                 Padding="8,0"
@@ -924,7 +951,7 @@
                                 BorderBrush="#2A3640"
                                 Command="{Binding DataContext.CopyHistoryItemSqlCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 CommandParameter="{Binding}" />
-                        <Button Grid.Column="7"
+                        <Button Grid.Column="8"
                                 Content="→ Snippet"
                                 Height="26"
                                 Padding="8,0"
@@ -933,7 +960,7 @@
                                 BorderBrush="#2A3640"
                                 Command="{Binding DataContext.AddHistoryItemToSnippetsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 CommandParameter="{Binding}" />
-                        <Button Grid.Column="8"
+                        <Button Grid.Column="9"
                                 Content="Delete"
                                 Height="26"
                                 Padding="8,0"
@@ -1020,6 +1047,12 @@
             </StackPanel>
 
             <StackPanel Spacing="6">
+              <TextBlock Text="Tags" FontSize="12" Foreground="#91A0AD" />
+              <TextBox Text="{Binding NewSnippetTags, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                       Watermark="reporting, orders, maintenance" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
               <TextBlock Text="SQL" FontSize="12" Foreground="#91A0AD" />
               <TextBox Text="{Binding NewSnippetSqlText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                        Watermark="SELECT ..."
@@ -1043,17 +1076,23 @@
         </Border>
 
         <Border Grid.Column="1" Classes="panel">
-          <Grid RowDefinitions="Auto,*">
+          <Grid RowDefinitions="Auto,Auto,*">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="Saved Snippets" FontSize="14" FontWeight="SemiBold" />
               <Button Grid.Column="1"
                       Content="Refresh"
                       Height="32"
                       Padding="14,0"
-                      Command="{Binding LoadSnippetsCommand}" />
+                    Command="{Binding LoadSnippetsCommand}" />
             </Grid>
 
-            <ScrollViewer Grid.Row="1" Margin="0,12,0,0">
+            <TextBox Grid.Row="1"
+                     Margin="0,12,0,0"
+                     Text="{Binding SnippetFilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Watermark="Search name, SQL, description, or tag…"
+                     FontSize="12" />
+
+            <ScrollViewer Grid.Row="2" Margin="0,12,0,0">
               <ItemsControl ItemsSource="{Binding Snippets}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
@@ -1081,6 +1120,12 @@
                                    Foreground="#91A0AD"
                                    TextWrapping="Wrap"
                                    IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                        <TextBlock Text="{Binding TagsDisplay}"
+                                   FontSize="11"
+                                   Foreground="#80B8FF"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding TagsDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
                         <Border Padding="8,6"
                                 Background="#0A0F13"

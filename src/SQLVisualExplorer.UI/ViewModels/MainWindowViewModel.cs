@@ -13,6 +13,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IConnectionService _connectionService;
     private readonly IQueryExecutionService _queryExecutionService;
     private readonly IExplainAnalyzeService _explainAnalyzeService;
+    private readonly IPlanParserService _planParserService;
     private readonly IHistoryService _historyService;
     private readonly ISnippetService _snippetService;
     private readonly IQueryAdvisorService? _advisorService;
@@ -93,6 +94,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     private string _connectionStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConnectionFormTitle))]
+    [NotifyPropertyChangedFor(nameof(SaveConnectionButtonText))]
+    [NotifyPropertyChangedFor(nameof(IsEditingConnection))]
+    private Guid? _editingConnectionId;
+
+    public bool IsEditingConnection => EditingConnectionId is not null;
+
+    public string ConnectionFormTitle => IsEditingConnection ? "Edit Connection" : "New Connection";
+
+    public string SaveConnectionButtonText => IsEditingConnection ? "Update Connection" : "Save Connection";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunQueryCommand))]
@@ -193,7 +206,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private string _newSnippetSqlText = string.Empty;
 
     [ObservableProperty]
+    private string _newSnippetTags = string.Empty;
+
+    [ObservableProperty]
     private string _snippetStatusMessage = string.Empty;
+
+    private readonly List<SnippetItemViewModel> _allSnippetItems = [];
+
+    [ObservableProperty]
+    private string _snippetFilterText = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
@@ -256,6 +277,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             new DesignConnectionService(),
             new DesignQueryExecutionService(),
             new DesignExplainAnalyzeService(),
+            new DesignPlanParserService(),
             new DesignHistoryService(),
             new DesignSnippetService())
     {
@@ -265,6 +287,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IConnectionService connectionService,
         IQueryExecutionService queryExecutionService,
         IExplainAnalyzeService explainAnalyzeService,
+        IPlanParserService planParserService,
         IHistoryService historyService,
         ISnippetService snippetService,
         IQueryAdvisorService? advisorService = null,
@@ -273,6 +296,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _connectionService = connectionService;
         _queryExecutionService = queryExecutionService;
         _explainAnalyzeService = explainAnalyzeService;
+        _planParserService = planParserService;
         _historyService = historyService;
         _snippetService = snippetService;
         _advisorService = advisorService;
@@ -491,25 +515,89 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        var connection = await _connectionService.CreateConnectionAsync(new CreateConnectionRequest
+        try
         {
-            Name = NewConnectionName,
-            DatabaseType = NewConnectionDatabaseType,
-            Host = NewConnectionHost,
-            Port = port,
-            Database = NewConnectionDatabase,
-            Username = NewConnectionUsername,
-            Password = null,
-            UseSsl = NewConnectionUseSsl
-        });
+            var isEditing = IsEditingConnection;
+            Connection connection;
 
-        var connectionItem = ConnectionListItemViewModel.FromConnection(connection);
-        Connections.Add(connectionItem);
-        SelectedConnection = connectionItem;
-        SelectedConnectionPassword = NewConnectionPassword;
+            if (EditingConnectionId is { } connectionId)
+            {
+                var updated = await _connectionService.UpdateConnectionAsync(connectionId, new UpdateConnectionRequest
+                {
+                Name = NewConnectionName,
+                DatabaseType = NewConnectionDatabaseType,
+                Host = NewConnectionHost,
+                Port = port,
+                Database = NewConnectionDatabase,
+                Username = NewConnectionUsername,
+                Password = NewConnectionPassword,
+                UpdatePassword = true,
+                UseSsl = NewConnectionUseSsl
+                });
+
+                if (updated is null)
+                {
+                    ConnectionStatusMessage = "Connection no longer exists.";
+                    return;
+                }
+
+                connection = updated;
+                var existingItem = Connections.FirstOrDefault(item => item.Id == connection.Id);
+                if (existingItem is not null)
+                    Connections[Connections.IndexOf(existingItem)] = ConnectionListItemViewModel.FromConnection(connection);
+            }
+            else
+            {
+                connection = await _connectionService.CreateConnectionAsync(new CreateConnectionRequest
+                {
+                    Name = NewConnectionName,
+                    DatabaseType = NewConnectionDatabaseType,
+                    Host = NewConnectionHost,
+                    Port = port,
+                    Database = NewConnectionDatabase,
+                    Username = NewConnectionUsername,
+                    Password = NewConnectionPassword,
+                    UseSsl = NewConnectionUseSsl
+                });
+
+                Connections.Add(ConnectionListItemViewModel.FromConnection(connection));
+            }
+
+            var connectionItem = Connections.First(item => item.Id == connection.Id);
+            SelectedConnection = connectionItem;
+            SelectedConnectionPassword = connection.Password ?? string.Empty;
+            ClearConnectionForm();
+
+            ConnectionStatusMessage = $"{(isEditing ? "Updated" : "Saved")} connection \"{connection.Name}\".";
+        }
+        catch (Exception exception)
+        {
+            ConnectionStatusMessage = $"Could not save connection: {GetFriendlyErrorMessage(exception)}";
+        }
+    }
+
+    [RelayCommand]
+    private void EditConnection(ConnectionListItemViewModel item)
+    {
+        var connection = item.Connection;
+
+        EditingConnectionId = connection.Id;
+        NewConnectionName = connection.Name;
+        NewConnectionDatabaseType = connection.DatabaseType;
+        NewConnectionHost = connection.Host ?? "localhost";
+        NewConnectionPort = connection.Port?.ToString() ?? string.Empty;
+        NewConnectionDatabase = connection.Database;
+        NewConnectionUsername = connection.Username ?? string.Empty;
+        NewConnectionPassword = connection.Password ?? string.Empty;
+        NewConnectionUseSsl = connection.UseSsl;
+        ConnectionStatusMessage = $"Editing \"{connection.Name}\". Leave password empty to remove it from the keychain.";
+    }
+
+    [RelayCommand]
+    private void CancelConnectionEdit()
+    {
         ClearConnectionForm();
-
-        ConnectionStatusMessage = $"Saved connection \"{connection.Name}\".";
+        ConnectionStatusMessage = "Connection edit cancelled.";
     }
 
     [RelayCommand(CanExecute = nameof(CanSaveConnection))]
@@ -660,39 +748,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
             var plan = await explainFunc(CreateExecutableConnection(), SqlText, _cts.Token);
             stopwatch.Stop();
 
-            var flattenedNodes = FlattenPlan(plan.Root).ToList();
-            var issueItemsByNodeId = BuildIssueIndex(plan.Issues);
-
-            foreach (var item in flattenedNodes)
-            {
-                VisualPlanNodes.Add(PlanNodeVisualItemViewModel.FromNode(
-                    item.Node,
-                    item.Depth,
-                    plan.Root?.TotalCost,
-                    plan.Root?.ActualTotalTimeMs,
-                    issueItemsByNodeId.GetValueOrDefault(item.Node.Id) ?? []));
-            }
-
-            foreach (var issue in plan.Issues)
-            {
-                PlanIssues.Add(PlanIssueItemViewModel.FromIssue(issue));
-            }
-
-            _currentPlanIssues = plan.Issues;
-            PlanSummaryText = BuildPlanSummary(plan.Root, flattenedNodes.Count, plan.Issues.Count);
-            UpdateIssuesBadge(plan.Issues);
-            PlanTreeHeaderText = $"Plan ({flattenedNodes.Count} node(s))";
-
-            if (plan.Root is not null)
-            {
-                ApplyGraphLayout(plan.Root);
-                BuildPlanTree(plan.Root, issueItemsByNodeId);
-            }
-            SelectPlanNode(VisualPlanNodes.FirstOrDefault());
+            var planNodeCount = PresentPlan(plan);
             ExportResultsToCsvCommand.NotifyCanExecuteChanged();
-            QueryStatusMessage = $"{label} returned {flattenedNodes.Count} plan node(s), {plan.Issues.Count} issue(s) in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.";
+            QueryStatusMessage = $"{label} returned {planNodeCount} plan node(s), {plan.Issues.Count} issue(s) in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.";
             SelectedNavigationItem = NavigationItems.First(item => item.Code == "PL");
-            await RecordHistoryAsync(true, stopwatch.Elapsed, flattenedNodes.Count, null, plan.RawJson);
+            await RecordHistoryAsync(true, stopwatch.Elapsed, planNodeCount, null, plan.RawJson);
         }
         catch (OperationCanceledException)
         {
@@ -743,6 +803,48 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             SelectedPlanNodeIssues.Add(issue);
         }
+    }
+
+    private int PresentPlan(ExecutionPlan plan)
+    {
+        VisualPlanNodes.Clear();
+        GraphEdges.Clear();
+        PlanTreeRoots.Clear();
+        PlanIssues.Clear();
+        SelectedPlanNodeIssues.Clear();
+
+        var flattenedNodes = FlattenPlan(plan.Root).ToList();
+        var issueItemsByNodeId = BuildIssueIndex(plan.Issues);
+
+        foreach (var item in flattenedNodes)
+        {
+            VisualPlanNodes.Add(PlanNodeVisualItemViewModel.FromNode(
+                item.Node,
+                item.Depth,
+                plan.Root?.TotalCost,
+                plan.Root?.ActualTotalTimeMs,
+                issueItemsByNodeId.GetValueOrDefault(item.Node.Id) ?? []));
+        }
+
+        foreach (var issue in plan.Issues)
+        {
+            PlanIssues.Add(PlanIssueItemViewModel.FromIssue(issue));
+        }
+
+        _currentPlanIssues = plan.Issues;
+        PlanSummaryText = BuildPlanSummary(plan.Root, flattenedNodes.Count, plan.Issues.Count);
+        UpdateIssuesBadge(plan.Issues);
+        PlanTreeHeaderText = $"Plan ({flattenedNodes.Count} node(s))";
+
+        if (plan.Root is not null)
+        {
+            ApplyGraphLayout(plan.Root);
+            BuildPlanTree(plan.Root, issueItemsByNodeId);
+        }
+
+        SelectPlanNode(VisualPlanNodes.FirstOrDefault());
+        ExportPlanToHtmlCommand.NotifyCanExecuteChanged();
+        return flattenedNodes.Count;
     }
 
     [RelayCommand]
@@ -822,6 +924,29 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void OpenHistoryPlan(QueryHistoryItemViewModel item)
+    {
+        if (!item.HasSavedPlan || item.DatabaseType is null || string.IsNullOrWhiteSpace(item.ExplainOutput))
+        {
+            QueryStatusMessage = "This history entry does not have a reusable execution plan.";
+            return;
+        }
+
+        try
+        {
+            SqlText = item.SqlText;
+            var plan = _planParserService.Parse(item.DatabaseType.Value, item.ExplainOutput);
+            var nodeCount = PresentPlan(plan);
+            QueryStatusMessage = $"Loaded saved plan with {nodeCount} node(s).";
+            SelectedNavigationItem = NavigationItems.First(navigation => navigation.Code == "PL");
+        }
+        catch (Exception exception)
+        {
+            QueryStatusMessage = $"Could not load saved plan: {GetFriendlyErrorMessage(exception)}";
+        }
+    }
+
+    [RelayCommand]
     private void CopyHistoryItemSql(QueryHistoryItemViewModel item)
     {
         if (CopyTextToClipboard is not null)
@@ -850,6 +975,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         NewSnippetName = string.Empty;
         NewSnippetDescription = string.Empty;
         NewSnippetSqlText = item.SqlText;
+        NewSnippetTags = string.Empty;
         SelectedNavigationItem = NavigationItems.First(n => n.Code == "SN");
     }
 
@@ -858,10 +984,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         var snippets = await _snippetService.GetSnippetsAsync();
 
-        Snippets.Clear();
-
-        foreach (var snippet in snippets)
-            Snippets.Add(SnippetItemViewModel.FromSnippet(snippet));
+        _allSnippetItems.Clear();
+        _allSnippetItems.AddRange(snippets.Select(SnippetItemViewModel.FromSnippet));
+        ApplySnippetFilter();
 
         SnippetStatusMessage = Snippets.Count == 0
             ? "No saved snippets yet."
@@ -875,17 +1000,51 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             Name = NewSnippetName,
             Description = NewSnippetDescription,
-            SqlText = NewSnippetSqlText
+            SqlText = NewSnippetSqlText,
+            Tags = ParseSnippetTags(NewSnippetTags)
         });
 
-        Snippets.Insert(0, SnippetItemViewModel.FromSnippet(snippet));
+        _allSnippetItems.Add(SnippetItemViewModel.FromSnippet(snippet));
+        ApplySnippetFilter();
         NewSnippetName = string.Empty;
         NewSnippetDescription = string.Empty;
         NewSnippetSqlText = string.Empty;
+        NewSnippetTags = string.Empty;
         SnippetStatusMessage = $"Saved snippet \"{snippet.Name}\".";
     }
 
     private bool CanSaveSnippet() => !string.IsNullOrWhiteSpace(NewSnippetName);
+
+    partial void OnSnippetFilterTextChanged(string value) => ApplySnippetFilter();
+
+    private void ApplySnippetFilter()
+    {
+        var term = SnippetFilterText.Trim();
+        var filtered = string.IsNullOrWhiteSpace(term)
+            ? _allSnippetItems
+            : _allSnippetItems.Where(item =>
+                item.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (item.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || item.SqlText.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || item.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)));
+
+        Snippets.Clear();
+
+        foreach (var item in filtered.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            Snippets.Add(item);
+        }
+    }
+
+    private static IReadOnlyList<string> ParseSnippetTags(string value)
+    {
+        return value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(tag => tag.TrimStart('#'))
+            .Where(tag => tag.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 
     [RelayCommand]
     private void OpenSnippet(SnippetItemViewModel item)
@@ -897,7 +1056,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenSnippetsPopupAsync()
     {
-        if (Snippets.Count == 0)
+        if (_allSnippetItems.Count == 0)
             await LoadSnippetsAsync();
         SnippetsPopupSearchText = string.Empty;
         RefreshPopupSnippets();
@@ -921,11 +1080,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         PopupSnippets.Clear();
         var term = SnippetsPopupSearchText.Trim();
-        foreach (var snippet in Snippets)
+        foreach (var snippet in _allSnippetItems)
         {
             if (string.IsNullOrEmpty(term) ||
                 snippet.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                snippet.SqlPreview.Contains(term, StringComparison.OrdinalIgnoreCase))
+                snippet.SqlPreview.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                (snippet.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                snippet.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)))
             {
                 PopupSnippets.Add(snippet);
             }
@@ -938,6 +1099,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         NewSnippetName = string.Empty;
         NewSnippetDescription = string.Empty;
         NewSnippetSqlText = SqlText;
+        NewSnippetTags = string.Empty;
         SelectedNavigationItem = NavigationItems.First(n => n.Code == "SN");
     }
 
@@ -954,7 +1116,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     {
         item.IsPendingDelete = false;
         await _snippetService.DeleteSnippetAsync(item.Id);
-        Snippets.Remove(item);
+        _allSnippetItems.Remove(item);
+        ApplySnippetFilter();
         SnippetStatusMessage = $"Deleted \"{item.Name}\".";
     }
 
@@ -1213,6 +1376,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var entry = await _historyService.RecordAsync(new RecordQueryHistoryRequest
         {
             ConnectionId = SelectedConnection?.Id,
+            DatabaseType = SelectedConnection?.Connection.DatabaseType,
             SqlText = SqlText,
             Duration = duration,
             RowCount = rowCount,
@@ -1543,6 +1707,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private void ClearConnectionForm()
     {
+        EditingConnectionId = null;
         NewConnectionName = string.Empty;
         NewConnectionDatabaseType = DatabaseType.PostgreSql;
         NewConnectionHost = "localhost";
@@ -1770,6 +1935,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
             };
 
             return Task.FromResult(plan);
+        }
+    }
+
+    private sealed class DesignPlanParserService : IPlanParserService
+    {
+        public ExecutionPlan Parse(DatabaseType databaseType, string explainOutput)
+        {
+            return new ExecutionPlan
+            {
+                Root = new PlanNode
+                {
+                    NodeType = NodeType.Unknown,
+                    Label = "Saved execution plan"
+                },
+                RawJson = explainOutput
+            };
         }
     }
 

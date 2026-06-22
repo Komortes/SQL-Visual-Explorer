@@ -17,6 +17,10 @@ public sealed partial class SnippetItemViewModel : ObservableObject
 
     public string CreatedAt { get; }
 
+    public IReadOnlyList<string> Tags { get; }
+
+    public string TagsDisplay { get; }
+
     [ObservableProperty]
     private bool _isPendingDelete;
 
@@ -26,6 +30,8 @@ public sealed partial class SnippetItemViewModel : ObservableObject
         Name = snippet.Name;
         Description = snippet.Description;
         SqlText = snippet.SqlText;
+        Tags = snippet.Tags;
+        TagsDisplay = string.Join("  ", snippet.Tags.Select(tag => $"#{tag}"));
 
         var flat = snippet.SqlText.Replace('\n', ' ').Replace('\r', ' ');
         SqlPreview = flat.Length > 120 ? flat[..120] + "…" : flat;

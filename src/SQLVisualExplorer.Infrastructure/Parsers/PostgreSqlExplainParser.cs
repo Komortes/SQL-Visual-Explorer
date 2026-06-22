@@ -44,7 +44,17 @@ public sealed class PostgreSqlExplainParser : IExplainParser
             ActualTotalTimeMs = GetDouble(element, "Actual Total Time"),
             EstimatedRows = GetLong(element, "Plan Rows"),
             ActualRows = GetLong(element, "Actual Rows"),
-            Filter = GetString(element, "Filter"),
+            ActualLoops = GetLong(element, "Actual Loops"),
+            RelationName = GetString(element, "Relation Name"),
+            IndexName = GetString(element, "Index Name"),
+            Filter = FirstNonEmpty(
+                GetString(element, "Filter"),
+                GetString(element, "Index Cond"),
+                GetString(element, "Recheck Cond")),
+            JoinCondition = JoinNonEmpty(
+                GetString(element, "Hash Cond"),
+                GetString(element, "Merge Cond"),
+                GetString(element, "Join Filter")),
             HashBatches = GetInt(element, "Hash Batches"),
             Children = children
         };
@@ -118,6 +128,17 @@ public sealed class PostgreSqlExplainParser : IExplainParser
         return TryGetProperty(element, propertyName, out var property) && property.TryGetInt32(out var value)
             ? value
             : null;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+    }
+
+    private static string? JoinNonEmpty(params string?[] values)
+    {
+        var conditions = values.Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+        return conditions.Length == 0 ? null : string.Join("; ", conditions);
     }
 
     private static bool TryGetProperty(JsonElement element, string propertyName, out JsonElement property)

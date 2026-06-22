@@ -8,6 +8,8 @@ public sealed class QueryHistoryEntity
 
     public ConnectionEntity? Connection { get; set; }
 
+    public string? DatabaseType { get; set; }
+
     public string SqlText { get; set; } = string.Empty;
 
     public DateTime ExecutedAt { get; set; }
