@@ -10,7 +10,7 @@
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.15" Condition="'$(Configuration)' == 'Debug'" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.15" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.15" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.16" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
   </ItemGroup>
 
   <ItemGroup>

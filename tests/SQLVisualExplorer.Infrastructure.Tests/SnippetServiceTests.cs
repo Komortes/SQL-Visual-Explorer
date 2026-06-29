@@ -37,7 +37,7 @@ public sealed class SnippetServiceTests
         {
             dbContext.Snippets.Add(new SnippetEntity
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = Guid.NewGuid(),
                 Name = "Legacy",
                 SqlText = "select 1",
                 Tags = "ops, reporting,ops",

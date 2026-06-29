@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SQLVisualExplorer.Application.Services;
@@ -10,6 +9,8 @@ namespace SQLVisualExplorer.UI.ViewModels;
 
 public sealed partial class MainWindowViewModel : ObservableObject
 {
+    // ── Service dependencies ─────────────────────────────────────────────────
+
     private readonly IConnectionService _connectionService;
     private readonly IQueryExecutionService _queryExecutionService;
     private readonly IExplainAnalyzeService _explainAnalyzeService;
@@ -18,7 +19,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly ISnippetService _snippetService;
     private readonly IQueryAdvisorService? _advisorService;
     private readonly ISecretStore? _secretStore;
+
+    // ── Non-observable backing state ─────────────────────────────────────────
+
     private IReadOnlyList<PlanIssue> _currentPlanIssues = [];
+    private CancellationTokenSource? _cts;
+    private readonly List<QueryHistoryItemViewModel> _allHistoryItems = [];
+    private readonly List<SnippetItemViewModel> _allSnippetItems = [];
+    private readonly List<QueryResultRowViewModel> _resultRowsBacking = [];
+    private string? _resultSortColumn;
+    private bool _resultSortAscending = true;
+
+    // ── Navigation ───────────────────────────────────────────────────────────
 
     [ObservableProperty]
     private ShellNavigationItemViewModel _selectedNavigationItem;
@@ -53,6 +65,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool _isPlanFlamegraphVisible;
 
+    // ── Connection form ──────────────────────────────────────────────────────
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveConnectionCommand))]
     [NotifyCanExecuteChangedFor(nameof(TestConnectionCommand))]
@@ -63,14 +77,6 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(NewConnectionDatabaseLabel))]
     [NotifyPropertyChangedFor(nameof(NewConnectionDatabaseWatermark))]
     private DatabaseType _newConnectionDatabaseType = DatabaseType.PostgreSql;
-
-    public bool IsLocalDatabaseConnection => NewConnectionDatabaseType == DatabaseType.SQLite;
-
-    public string NewConnectionDatabaseLabel => IsLocalDatabaseConnection ? "File path" : "Database";
-
-    public string NewConnectionDatabaseWatermark => IsLocalDatabaseConnection
-        ? "/path/to/database.sqlite"
-        : "app_db";
 
     [ObservableProperty]
     private string _newConnectionHost = "localhost";
@@ -101,11 +107,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsEditingConnection))]
     private Guid? _editingConnectionId;
 
-    public bool IsEditingConnection => EditingConnectionId is not null;
-
-    public string ConnectionFormTitle => IsEditingConnection ? "Edit Connection" : "New Connection";
-
-    public string SaveConnectionButtonText => IsEditingConnection ? "Update Connection" : "Save Connection";
+    // ── Active connection / query ────────────────────────────────────────────
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunQueryCommand))]
@@ -133,7 +135,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
     private bool _isBusy;
 
-    private CancellationTokenSource? _cts;
+    // ── Result grid ──────────────────────────────────────────────────────────
 
     [ObservableProperty]
     private string _resultHeaderText = string.Empty;
@@ -141,7 +143,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private double _resultTotalWidth;
 
-    private readonly List<QueryHistoryItemViewModel> _allHistoryItems = [];
+    // ── History ──────────────────────────────────────────────────────────────
 
     [ObservableProperty]
     private string _historyFilterText = string.Empty;
@@ -152,6 +154,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private int _historySlowThresholdMs = 500;
 
+    // ── Snippets ─────────────────────────────────────────────────────────────
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CloseSnippetsPopupCommand))]
     private bool _isSnippetsPopupVisible;
@@ -159,11 +163,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string _snippetsPopupSearchText = string.Empty;
 
-    private readonly List<QueryResultRowViewModel> _resultRowsBacking = [];
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveSnippetCommand))]
+    private string _newSnippetName = string.Empty;
 
-    private string? _resultSortColumn;
+    [ObservableProperty]
+    private string _newSnippetDescription = string.Empty;
 
-    private bool _resultSortAscending = true;
+    [ObservableProperty]
+    private string _newSnippetSqlText = string.Empty;
+
+    [ObservableProperty]
+    private string _newSnippetTags = string.Empty;
+
+    [ObservableProperty]
+    private string _snippetStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _snippetFilterText = string.Empty;
+
+    // ── Execution plan ───────────────────────────────────────────────────────
 
     [ObservableProperty]
     private string _planSummaryText = "Run Explain to inspect the selected query plan.";
@@ -195,26 +214,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string _selectedPlanNodeDetails = "Run Explain and select a node to inspect details.";
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveSnippetCommand))]
-    private string _newSnippetName = string.Empty;
-
-    [ObservableProperty]
-    private string _newSnippetDescription = string.Empty;
-
-    [ObservableProperty]
-    private string _newSnippetSqlText = string.Empty;
-
-    [ObservableProperty]
-    private string _newSnippetTags = string.Empty;
-
-    [ObservableProperty]
-    private string _snippetStatusMessage = string.Empty;
-
-    private readonly List<SnippetItemViewModel> _allSnippetItems = [];
-
-    [ObservableProperty]
-    private string _snippetFilterText = string.Empty;
+    // ── Compare ──────────────────────────────────────────────────────────────
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RunCompareCommand))]
@@ -234,6 +234,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportCompareToHtmlCommand))]
     private bool _compareHasResults;
+
+    [ObservableProperty]
+    private ComparePlanResultViewModel? _compareResultA;
+
+    [ObservableProperty]
+    private ComparePlanResultViewModel? _compareResultB;
+
+    // ── Advisor ──────────────────────────────────────────────────────────────
 
     [ObservableProperty]
     private string _advisorApiKey = string.Empty;
@@ -257,20 +265,69 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private bool _isAdvisorPanelVisible;
 
-    [ObservableProperty]
-    private ComparePlanResultViewModel? _compareResultA;
+    // ── Collections ──────────────────────────────────────────────────────────
 
-    [ObservableProperty]
-    private ComparePlanResultViewModel? _compareResultB;
+    public ObservableCollection<ShellNavigationItemViewModel> NavigationItems { get; }
+
+    public ObservableCollection<DatabaseType> DatabaseTypeOptions { get; }
+
+    public ObservableCollection<ConnectionListItemViewModel> Connections { get; } = [];
+
+    public ObservableCollection<string> ResultColumns { get; } = [];
+
+    public ObservableCollection<QueryResultRowViewModel> ResultRows { get; } = [];
+
+    public ObservableCollection<ResultColumnViewModel> ResultColumnsView { get; } = [];
+
+    public ObservableCollection<PlanNodeVisualItemViewModel> VisualPlanNodes { get; } = [];
+
+    public ObservableCollection<GraphEdgeViewModel> GraphEdges { get; } = [];
+
+    public ObservableCollection<PlanIssueItemViewModel> PlanIssues { get; } = [];
+
+    public ObservableCollection<PlanNodeRowViewModel> PlanTreeRoots { get; } = [];
+
+    public ObservableCollection<PlanIssueItemViewModel> SelectedPlanNodeIssues { get; } = [];
+
+    public ObservableCollection<QueryHistoryItemViewModel> HistoryItems { get; } = [];
+
+    public ObservableCollection<SnippetItemViewModel> Snippets { get; } = [];
+
+    public ObservableCollection<SnippetItemViewModel> PopupSnippets { get; } = [];
 
     public ObservableCollection<PlanNodeVisualItemViewModel> ComparePlanNodesA { get; } = [];
+
     public ObservableCollection<PlanNodeVisualItemViewModel> ComparePlanNodesB { get; } = [];
+
+    // ── Computed properties ──────────────────────────────────────────────────
+
+    public bool IsLocalDatabaseConnection => NewConnectionDatabaseType == DatabaseType.SQLite;
+
+    public string NewConnectionDatabaseLabel => IsLocalDatabaseConnection ? "File path" : "Database";
+
+    public string NewConnectionDatabaseWatermark => IsLocalDatabaseConnection
+        ? "/path/to/database.sqlite"
+        : "app_db";
+
+    public bool IsEditingConnection => EditingConnectionId is not null;
+
+    public string ConnectionFormTitle => IsEditingConnection ? "Edit Connection" : "New Connection";
+
+    public string SaveConnectionButtonText => IsEditingConnection ? "Update Connection" : "Save Connection";
+
+    public string ActiveTitle => SelectedNavigationItem.Label;
+
+    public string ActiveSubtitle => SelectedNavigationItem.Description;
+
+    // ── View callbacks (set by code-behind) ──────────────────────────────────
 
     public Func<string, Task<string?>>? RequestSaveFilePath { get; set; }
 
     public Func<double>? ComputeFitZoom { get; set; }
 
     public Func<string, Task>? CopyTextToClipboard { get; set; }
+
+    // ── Constructors ─────────────────────────────────────────────────────────
 
     public MainWindowViewModel()
         : this(
@@ -331,37 +388,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         };
     }
 
-    public ObservableCollection<ShellNavigationItemViewModel> NavigationItems { get; }
-
-    public ObservableCollection<DatabaseType> DatabaseTypeOptions { get; }
-
-    public ObservableCollection<ConnectionListItemViewModel> Connections { get; } = [];
-
-    public ObservableCollection<string> ResultColumns { get; } = [];
-
-    public ObservableCollection<QueryResultRowViewModel> ResultRows { get; } = [];
-
-    public ObservableCollection<ResultColumnViewModel> ResultColumnsView { get; } = [];
-
-    public ObservableCollection<PlanNodeVisualItemViewModel> VisualPlanNodes { get; } = [];
-
-    public ObservableCollection<GraphEdgeViewModel> GraphEdges { get; } = [];
-
-    public ObservableCollection<PlanIssueItemViewModel> PlanIssues { get; } = [];
-
-    public ObservableCollection<PlanNodeRowViewModel> PlanTreeRoots { get; } = [];
-
-    public ObservableCollection<PlanIssueItemViewModel> SelectedPlanNodeIssues { get; } = [];
-
-    public ObservableCollection<QueryHistoryItemViewModel> HistoryItems { get; } = [];
-
-    public ObservableCollection<SnippetItemViewModel> Snippets { get; } = [];
-
-    public ObservableCollection<SnippetItemViewModel> PopupSnippets { get; } = [];
-
-    public string ActiveTitle => SelectedNavigationItem.Label;
-
-    public string ActiveSubtitle => SelectedNavigationItem.Description;
+    // ── Navigation ───────────────────────────────────────────────────────────
 
     partial void OnSelectedNavigationItemChanged(ShellNavigationItemViewModel value)
     {
@@ -381,34 +408,24 @@ public sealed partial class MainWindowViewModel : ObservableObject
         IsEditorVisible = IsWorkspaceVisible && !IsPlanVisible;
 
         if (IsConnectionsVisible)
-        {
             LoadConnectionsCommand.Execute(null);
-        }
 
         if (IsHistoryVisible)
-        {
             LoadHistoryCommand.Execute(null);
-        }
 
         if (IsSnippetsVisible)
-        {
             LoadSnippetsCommand.Execute(null);
-        }
 
         if (IsCompareVisible && string.IsNullOrWhiteSpace(CompareQueryAText))
-        {
             CompareQueryAText = SqlText;
-        }
     }
 
     [RelayCommand]
-    private void SelectNavigationItem(ShellNavigationItemViewModel navigationItem)
-    {
+    private void SelectNavigationItem(ShellNavigationItemViewModel navigationItem) =>
         SelectedNavigationItem = navigationItem;
-    }
 
     [RelayCommand]
-    private void ZoomIn()  => GraphZoom = Math.Min(GraphZoom + 0.2, 2.0);
+    private void ZoomIn() => GraphZoom = Math.Min(GraphZoom + 0.2, 2.0);
 
     [RelayCommand]
     private void ZoomOut() => GraphZoom = Math.Max(GraphZoom - 0.2, 0.4);
@@ -416,977 +433,32 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [RelayCommand]
     private void ZoomFit() => GraphZoom = ComputeFitZoom?.Invoke() ?? 1.0;
 
-    [RelayCommand]
-    private void SelectConnection(ConnectionListItemViewModel item)
+    // ── Shared static helpers ─────────────────────────────────────────────────
+
+    private static IEnumerable<(PlanNode Node, int Depth)> FlattenPlan(PlanNode? root)
     {
-        SelectedConnection = item;
-        SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
+        if (root is null) yield break;
+        foreach (var item in FlattenPlan(root, 0))
+            yield return item;
     }
 
-    [RelayCommand]
-    private void RequestDeleteConnection(ConnectionListItemViewModel item) =>
-        item.IsPendingDelete = true;
-
-    [RelayCommand]
-    private void CancelDeleteConnection(ConnectionListItemViewModel item) =>
-        item.IsPendingDelete = false;
-
-    [RelayCommand]
-    private async Task DeleteConnectionAsync(ConnectionListItemViewModel item)
+    private static IEnumerable<(PlanNode Node, int Depth)> FlattenPlan(PlanNode node, int depth)
     {
-        item.IsPendingDelete = false;
-        await _connectionService.DeleteConnectionAsync(item.Id);
-        Connections.Remove(item);
-
-        if (SelectedConnection?.Id == item.Id)
-            SelectedConnection = Connections.FirstOrDefault();
-
-        ConnectionStatusMessage = $"Deleted \"{item.Name}\".";
+        yield return (node, depth);
+        foreach (var child in node.Children)
+            foreach (var item in FlattenPlan(child, depth + 1))
+                yield return item;
     }
 
-    [RelayCommand]
-    public async Task LoadConnectionsAsync()
+    internal static string FormatCellValue(object? value) => value switch
     {
-        var connections = await _connectionService.GetConnectionsAsync();
-
-        Connections.Clear();
-
-        foreach (var connection in connections)
-        {
-            Connections.Add(ConnectionListItemViewModel.FromConnection(connection));
-        }
-
-        SelectedConnection ??= Connections.FirstOrDefault();
-
-        ConnectionStatusMessage = Connections.Count == 0
-            ? "No saved connections yet."
-            : $"{Connections.Count} saved connection(s).";
-    }
-
-    [RelayCommand]
-    public async Task LoadHistoryAsync()
-    {
-        var history = await _historyService.GetRecentAsync();
-
-        _allHistoryItems.Clear();
-        foreach (var entry in history)
-            _allHistoryItems.Add(QueryHistoryItemViewModel.FromEntry(entry));
-
-        ApplyHistoryFilters();
-    }
-
-    [RelayCommand]
-    private void ApplyHistoryFilters()
-    {
-        var filtered = _allHistoryItems.AsEnumerable();
-
-        if (!string.IsNullOrWhiteSpace(HistoryFilterText))
-        {
-            var term = HistoryFilterText.Trim();
-            filtered = filtered.Where(item =>
-                item.SqlPreview.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                item.ConnectionName.Contains(term, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (HistoryShowSlowOnly)
-            filtered = filtered.Where(item =>
-                item.DurationMs.HasValue && item.DurationMs.Value >= HistorySlowThresholdMs);
-
-        HistoryItems.Clear();
-        foreach (var item in filtered)
-            HistoryItems.Add(item);
-    }
-
-    [RelayCommand]
-    private void ClearHistoryFilters()
-    {
-        HistoryFilterText = string.Empty;
-        HistoryShowSlowOnly = false;
-        HistorySlowThresholdMs = 500;
-        ApplyHistoryFilters();
-    }
-
-    [RelayCommand(CanExecute = nameof(CanSaveConnection))]
-    private async Task SaveConnectionAsync()
-    {
-        if (!TryParsePort(out var port))
-        {
-            ConnectionStatusMessage = "Port must be a number.";
-            return;
-        }
-
-        try
-        {
-            var isEditing = IsEditingConnection;
-            Connection connection;
-
-            if (EditingConnectionId is { } connectionId)
-            {
-                var updated = await _connectionService.UpdateConnectionAsync(connectionId, new UpdateConnectionRequest
-                {
-                Name = NewConnectionName,
-                DatabaseType = NewConnectionDatabaseType,
-                Host = NewConnectionHost,
-                Port = port,
-                Database = NewConnectionDatabase,
-                Username = NewConnectionUsername,
-                Password = NewConnectionPassword,
-                UpdatePassword = true,
-                UseSsl = NewConnectionUseSsl
-                });
-
-                if (updated is null)
-                {
-                    ConnectionStatusMessage = "Connection no longer exists.";
-                    return;
-                }
-
-                connection = updated;
-                var existingItem = Connections.FirstOrDefault(item => item.Id == connection.Id);
-                if (existingItem is not null)
-                    Connections[Connections.IndexOf(existingItem)] = ConnectionListItemViewModel.FromConnection(connection);
-            }
-            else
-            {
-                connection = await _connectionService.CreateConnectionAsync(new CreateConnectionRequest
-                {
-                    Name = NewConnectionName,
-                    DatabaseType = NewConnectionDatabaseType,
-                    Host = NewConnectionHost,
-                    Port = port,
-                    Database = NewConnectionDatabase,
-                    Username = NewConnectionUsername,
-                    Password = NewConnectionPassword,
-                    UseSsl = NewConnectionUseSsl
-                });
-
-                Connections.Add(ConnectionListItemViewModel.FromConnection(connection));
-            }
-
-            var connectionItem = Connections.First(item => item.Id == connection.Id);
-            SelectedConnection = connectionItem;
-            SelectedConnectionPassword = connection.Password ?? string.Empty;
-            ClearConnectionForm();
-
-            ConnectionStatusMessage = $"{(isEditing ? "Updated" : "Saved")} connection \"{connection.Name}\".";
-        }
-        catch (Exception exception)
-        {
-            ConnectionStatusMessage = $"Could not save connection: {GetFriendlyErrorMessage(exception)}";
-        }
-    }
-
-    [RelayCommand]
-    private void EditConnection(ConnectionListItemViewModel item)
-    {
-        var connection = item.Connection;
-
-        EditingConnectionId = connection.Id;
-        NewConnectionName = connection.Name;
-        NewConnectionDatabaseType = connection.DatabaseType;
-        NewConnectionHost = connection.Host ?? "localhost";
-        NewConnectionPort = connection.Port?.ToString() ?? string.Empty;
-        NewConnectionDatabase = connection.Database;
-        NewConnectionUsername = connection.Username ?? string.Empty;
-        NewConnectionPassword = connection.Password ?? string.Empty;
-        NewConnectionUseSsl = connection.UseSsl;
-        ConnectionStatusMessage = $"Editing \"{connection.Name}\". Leave password empty to remove it from the keychain.";
-    }
-
-    [RelayCommand]
-    private void CancelConnectionEdit()
-    {
-        ClearConnectionForm();
-        ConnectionStatusMessage = "Connection edit cancelled.";
-    }
-
-    [RelayCommand(CanExecute = nameof(CanSaveConnection))]
-    private async Task TestConnectionAsync()
-    {
-        if (!TryParsePort(out var port))
-        {
-            ConnectionStatusMessage = "Port must be a number.";
-            return;
-        }
-
-        ConnectionStatusMessage = "Testing connection...";
-
-        var result = await _connectionService.TestConnectionAsync(new CreateConnectionRequest
-        {
-            Name = NewConnectionName,
-            DatabaseType = NewConnectionDatabaseType,
-            Host = NewConnectionHost,
-            Port = port,
-            Database = NewConnectionDatabase,
-            Username = NewConnectionUsername,
-            Password = NewConnectionPassword,
-            UseSsl = NewConnectionUseSsl
-        });
-
-        ConnectionStatusMessage = result.Message;
-
-        if (result.Succeeded)
-        {
-            SelectedConnectionPassword = NewConnectionPassword;
-        }
-    }
-
-    private bool CanSaveConnection()
-    {
-        return !string.IsNullOrWhiteSpace(NewConnectionName)
-            && !string.IsNullOrWhiteSpace(NewConnectionDatabase);
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRunQuery))]
-    private async Task RunQueryAsync()
-    {
-        if (SelectedConnection is null)
-        {
-            QueryStatusMessage = "Select a connection first.";
-            return;
-        }
-
-        QueryStatusMessage = "Running query...";
-        ResultColumns.Clear();
-        ResultColumnsView.Clear();
-        ResultRows.Clear();
-        VisualPlanNodes.Clear();
-        PlanTreeRoots.Clear();
-        PlanIssues.Clear();
-        SelectedPlanNodeIssues.Clear();
-        ResultHeaderText = string.Empty;
-        PlanTreeHeaderText = "Plan Tree";
-        SelectedPlanNodeTitle = "No plan node selected.";
-        SelectedPlanNodeDetails = "Run Explain and select a node to inspect details.";
-        var stopwatch = Stopwatch.StartNew();
-        IsBusy = true;
-        _cts = new CancellationTokenSource();
-
-        try
-        {
-            var result = await _queryExecutionService.ExecuteAsync(CreateExecutableConnection(), SqlText, _cts.Token);
-            stopwatch.Stop();
-
-            BuildResultGrid(result.Columns, result.Rows);
-            ExportResultsToCsvCommand.NotifyCanExecuteChanged();
-
-            QueryStatusMessage = $"Returned {result.RowCount} row(s) in {result.Duration.TotalMilliseconds:N0} ms.";
-            await RecordHistoryAsync(true, result.Duration, result.RowCount, null);
-        }
-        catch (OperationCanceledException)
-        {
-            stopwatch.Stop();
-            QueryStatusMessage = "Query cancelled.";
-        }
-        catch (Exception exception)
-        {
-            stopwatch.Stop();
-            QueryStatusMessage = GetFriendlyErrorMessage(exception);
-            await RecordHistoryAsync(false, stopwatch.Elapsed, null, exception.Message);
-        }
-        finally
-        {
-            IsBusy = false;
-            _cts?.Dispose();
-            _cts = null;
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRunQuery))]
-    private async Task ExplainQueryAsync()
-    {
-        await ExplainQueryCoreAsync(
-            "Running explain...",
-            "Explain is running...",
-            (connection, sql, token) => _explainAnalyzeService.ExplainAsync(connection, sql, token),
-            "Explain");
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRunQuery))]
-    private async Task ExplainAnalyzeQueryAsync()
-    {
-        await ExplainQueryCoreAsync(
-            "Running explain analyze...",
-            "Explain Analyze is running. The database will execute the query.",
-            (connection, sql, token) => _explainAnalyzeService.ExplainAnalyzeAsync(connection, sql, token),
-            "Explain Analyze");
-    }
-
-    private async Task ExplainQueryCoreAsync(
-        string runningStatus,
-        string runningSummary,
-        Func<Connection, string, CancellationToken, Task<ExecutionPlan>> explainFunc,
-        string label)
-    {
-        if (SelectedConnection is null)
-        {
-            QueryStatusMessage = "Select a connection first.";
-            return;
-        }
-
-        QueryStatusMessage = runningStatus;
-        ResultColumns.Clear();
-        ResultColumnsView.Clear();
-        ResultRows.Clear();
-        VisualPlanNodes.Clear();
-        GraphEdges.Clear();
-        PlanTreeRoots.Clear();
-        PlanIssues.Clear();
-        SelectedPlanNodeIssues.Clear();
-        ResultHeaderText = string.Empty;
-        PlanSummaryText = runningSummary;
-        HasPlanIssues = false;
-        PlanIssuesBadgeText = string.Empty;
-        SelectedPlanNodeTitle = "No plan node selected.";
-        SelectedPlanNodeDetails = "Explain is running.";
-        var stopwatch = Stopwatch.StartNew();
-        IsBusy = true;
-        _cts = new CancellationTokenSource();
-
-        try
-        {
-            var plan = await explainFunc(CreateExecutableConnection(), SqlText, _cts.Token);
-            stopwatch.Stop();
-
-            var planNodeCount = PresentPlan(plan);
-            ExportResultsToCsvCommand.NotifyCanExecuteChanged();
-            QueryStatusMessage = $"{label} returned {planNodeCount} plan node(s), {plan.Issues.Count} issue(s) in {stopwatch.Elapsed.TotalMilliseconds:N0} ms.";
-            SelectedNavigationItem = NavigationItems.First(item => item.Code == "PL");
-            await RecordHistoryAsync(true, stopwatch.Elapsed, planNodeCount, null, plan.RawJson);
-        }
-        catch (OperationCanceledException)
-        {
-            stopwatch.Stop();
-            QueryStatusMessage = $"{label} cancelled.";
-            PlanSummaryText = "Cancelled.";
-        }
-        catch (Exception exception)
-        {
-            stopwatch.Stop();
-            var friendlyMessage = GetFriendlyErrorMessage(exception);
-            QueryStatusMessage = friendlyMessage;
-            PlanSummaryText = $"{label} failed.";
-            PlanTreeHeaderText = "Plan Tree";
-            SelectedPlanNodeTitle = "No plan node selected.";
-            SelectedPlanNodeDetails = friendlyMessage;
-            await RecordHistoryAsync(false, stopwatch.Elapsed, null, exception.Message);
-        }
-        finally
-        {
-            IsBusy = false;
-            _cts?.Dispose();
-            _cts = null;
-        }
-    }
-
-    [RelayCommand]
-    private void SelectPlanNode(PlanNodeVisualItemViewModel? node)
-    {
-        foreach (var visualNode in VisualPlanNodes)
-        {
-            visualNode.IsSelected = ReferenceEquals(visualNode, node);
-        }
-
-        SelectedPlanNodeIssues.Clear();
-
-        if (node is null)
-        {
-            SelectedPlanNodeTitle = "No plan node selected.";
-            SelectedPlanNodeDetails = "Select a node in the plan tree to inspect details.";
-            return;
-        }
-
-        SelectedPlanNodeTitle = node.Label;
-        SelectedPlanNodeDetails = node.DetailText;
-
-        foreach (var issue in node.Issues)
-        {
-            SelectedPlanNodeIssues.Add(issue);
-        }
-    }
-
-    private int PresentPlan(ExecutionPlan plan)
-    {
-        VisualPlanNodes.Clear();
-        GraphEdges.Clear();
-        PlanTreeRoots.Clear();
-        PlanIssues.Clear();
-        SelectedPlanNodeIssues.Clear();
-
-        var flattenedNodes = FlattenPlan(plan.Root).ToList();
-        var issueItemsByNodeId = BuildIssueIndex(plan.Issues);
-
-        foreach (var item in flattenedNodes)
-        {
-            VisualPlanNodes.Add(PlanNodeVisualItemViewModel.FromNode(
-                item.Node,
-                item.Depth,
-                plan.Root?.TotalCost,
-                plan.Root?.ActualTotalTimeMs,
-                issueItemsByNodeId.GetValueOrDefault(item.Node.Id) ?? []));
-        }
-
-        foreach (var issue in plan.Issues)
-        {
-            PlanIssues.Add(PlanIssueItemViewModel.FromIssue(issue));
-        }
-
-        _currentPlanIssues = plan.Issues;
-        PlanSummaryText = BuildPlanSummary(plan.Root, flattenedNodes.Count, plan.Issues.Count);
-        UpdateIssuesBadge(plan.Issues);
-        PlanTreeHeaderText = $"Plan ({flattenedNodes.Count} node(s))";
-
-        if (plan.Root is not null)
-        {
-            ApplyGraphLayout(plan.Root);
-            BuildPlanTree(plan.Root, issueItemsByNodeId);
-        }
-
-        SelectPlanNode(VisualPlanNodes.FirstOrDefault());
-        ExportPlanToHtmlCommand.NotifyCanExecuteChanged();
-        return flattenedNodes.Count;
-    }
-
-    [RelayCommand]
-    private void ShowPlanTable()
-    {
-        IsPlanTableVisible = true;
-        IsPlanGraphVisible = false;
-        IsPlanFlamegraphVisible = false;
-    }
-
-    [RelayCommand]
-    private void ShowPlanGraph()
-    {
-        IsPlanTableVisible = false;
-        IsPlanGraphVisible = true;
-        IsPlanFlamegraphVisible = false;
-    }
-
-    [RelayCommand]
-    private void ShowPlanFlamegraph()
-    {
-        IsPlanTableVisible = false;
-        IsPlanGraphVisible = false;
-        IsPlanFlamegraphVisible = true;
-    }
-
-    private void BuildPlanTree(
-        PlanNode root,
-        IReadOnlyDictionary<Guid, IReadOnlyList<PlanIssueItemViewModel>> issueIndex)
-    {
-        PlanTreeRoots.Clear();
-        PlanTreeRoots.Add(PlanNodeRowViewModel.FromNode(root, root.TotalCost, root.ActualTotalTimeMs, issueIndex));
-    }
-
-    [RelayCommand]
-    private void SelectPlanTreeNode(PlanNodeRowViewModel? node)
-    {
-        if (node is null) return;
-        var visualNode = VisualPlanNodes.FirstOrDefault(n => n.NodeId == node.NodeId);
-        SelectPlanNode(visualNode);
-        ApplyTreeSelection(PlanTreeRoots, node.NodeId);
-    }
-
-    private static void ApplyTreeSelection(IEnumerable<PlanNodeRowViewModel> nodes, Guid selectedId)
-    {
-        foreach (var n in nodes)
-        {
-            n.IsSelected = n.NodeId == selectedId;
-            ApplyTreeSelection(n.Children, selectedId);
-        }
-    }
-
-    private bool CanRunQuery()
-    {
-        return SelectedConnection is not null && !string.IsNullOrWhiteSpace(SqlText) && !IsBusy;
-    }
-
-    [RelayCommand]
-    private void CancelRun() => _cts?.Cancel();
-
-    [RelayCommand]
-    private void ShowAbout()
-    {
-        QueryStatusMessage = "SQL Visual Explorer — analyze EXPLAIN plans fast. Tree, graph and grid views.";
-    }
-
-    partial void OnSelectedConnectionChanged(ConnectionListItemViewModel? value)
-    {
-        SelectedConnectionPassword = value?.Connection?.Password ?? string.Empty;
-    }
-
-    [RelayCommand]
-    private void OpenHistoryItem(QueryHistoryItemViewModel item)
-    {
-        SqlText = item.SqlText;
-        SelectedNavigationItem = NavigationItems.First(item => item.Code == "ED");
-    }
-
-    [RelayCommand]
-    private void OpenHistoryPlan(QueryHistoryItemViewModel item)
-    {
-        if (!item.HasSavedPlan || item.DatabaseType is null || string.IsNullOrWhiteSpace(item.ExplainOutput))
-        {
-            QueryStatusMessage = "This history entry does not have a reusable execution plan.";
-            return;
-        }
-
-        try
-        {
-            SqlText = item.SqlText;
-            var plan = _planParserService.Parse(item.DatabaseType.Value, item.ExplainOutput);
-            var nodeCount = PresentPlan(plan);
-            QueryStatusMessage = $"Loaded saved plan with {nodeCount} node(s).";
-            SelectedNavigationItem = NavigationItems.First(navigation => navigation.Code == "PL");
-        }
-        catch (Exception exception)
-        {
-            QueryStatusMessage = $"Could not load saved plan: {GetFriendlyErrorMessage(exception)}";
-        }
-    }
-
-    [RelayCommand]
-    private void CopyHistoryItemSql(QueryHistoryItemViewModel item)
-    {
-        if (CopyTextToClipboard is not null)
-            _ = CopyTextToClipboard(item.SqlText);
-    }
-
-    [RelayCommand]
-    private void RequestDeleteHistoryItem(QueryHistoryItemViewModel item) =>
-        item.IsPendingDelete = true;
-
-    [RelayCommand]
-    private void CancelDeleteHistoryItem(QueryHistoryItemViewModel item) =>
-        item.IsPendingDelete = false;
-
-    [RelayCommand]
-    private async Task DeleteHistoryItemAsync(QueryHistoryItemViewModel item)
-    {
-        item.IsPendingDelete = false;
-        await _historyService.DeleteAsync(item.Id);
-        HistoryItems.Remove(item);
-    }
-
-    [RelayCommand]
-    private void AddHistoryItemToSnippets(QueryHistoryItemViewModel item)
-    {
-        NewSnippetName = string.Empty;
-        NewSnippetDescription = string.Empty;
-        NewSnippetSqlText = item.SqlText;
-        NewSnippetTags = string.Empty;
-        SelectedNavigationItem = NavigationItems.First(n => n.Code == "SN");
-    }
-
-    [RelayCommand]
-    public async Task LoadSnippetsAsync()
-    {
-        var snippets = await _snippetService.GetSnippetsAsync();
-
-        _allSnippetItems.Clear();
-        _allSnippetItems.AddRange(snippets.Select(SnippetItemViewModel.FromSnippet));
-        ApplySnippetFilter();
-
-        SnippetStatusMessage = Snippets.Count == 0
-            ? "No saved snippets yet."
-            : $"{Snippets.Count} snippet(s).";
-    }
-
-    [RelayCommand(CanExecute = nameof(CanSaveSnippet))]
-    private async Task SaveSnippetAsync()
-    {
-        var snippet = await _snippetService.CreateSnippetAsync(new CreateSnippetRequest
-        {
-            Name = NewSnippetName,
-            Description = NewSnippetDescription,
-            SqlText = NewSnippetSqlText,
-            Tags = ParseSnippetTags(NewSnippetTags)
-        });
-
-        _allSnippetItems.Add(SnippetItemViewModel.FromSnippet(snippet));
-        ApplySnippetFilter();
-        NewSnippetName = string.Empty;
-        NewSnippetDescription = string.Empty;
-        NewSnippetSqlText = string.Empty;
-        NewSnippetTags = string.Empty;
-        SnippetStatusMessage = $"Saved snippet \"{snippet.Name}\".";
-    }
-
-    private bool CanSaveSnippet() => !string.IsNullOrWhiteSpace(NewSnippetName);
-
-    partial void OnSnippetFilterTextChanged(string value) => ApplySnippetFilter();
-
-    private void ApplySnippetFilter()
-    {
-        var term = SnippetFilterText.Trim();
-        var filtered = string.IsNullOrWhiteSpace(term)
-            ? _allSnippetItems
-            : _allSnippetItems.Where(item =>
-                item.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
-                || (item.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
-                || item.SqlText.Contains(term, StringComparison.OrdinalIgnoreCase)
-                || item.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)));
-
-        Snippets.Clear();
-
-        foreach (var item in filtered.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            Snippets.Add(item);
-        }
-    }
-
-    private static IReadOnlyList<string> ParseSnippetTags(string value)
-    {
-        return value
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(tag => tag.TrimStart('#'))
-            .Where(tag => tag.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    [RelayCommand]
-    private void OpenSnippet(SnippetItemViewModel item)
-    {
-        SqlText = item.SqlText;
-        SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
-    }
-
-    [RelayCommand]
-    private async Task OpenSnippetsPopupAsync()
-    {
-        if (_allSnippetItems.Count == 0)
-            await LoadSnippetsAsync();
-        SnippetsPopupSearchText = string.Empty;
-        RefreshPopupSnippets();
-        IsSnippetsPopupVisible = true;
-    }
-
-    [RelayCommand(CanExecute = nameof(IsSnippetsPopupVisible))]
-    private void CloseSnippetsPopup() => IsSnippetsPopupVisible = false;
-
-    [RelayCommand]
-    private void OpenSnippetFromPopup(SnippetItemViewModel item)
-    {
-        SqlText = item.SqlText;
-        IsSnippetsPopupVisible = false;
-        SelectedNavigationItem = NavigationItems.First(n => n.Code == "ED");
-    }
-
-    partial void OnSnippetsPopupSearchTextChanged(string value) => RefreshPopupSnippets();
-
-    private void RefreshPopupSnippets()
-    {
-        PopupSnippets.Clear();
-        var term = SnippetsPopupSearchText.Trim();
-        foreach (var snippet in _allSnippetItems)
-        {
-            if (string.IsNullOrEmpty(term) ||
-                snippet.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                snippet.SqlPreview.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                (snippet.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
-                snippet.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)))
-            {
-                PopupSnippets.Add(snippet);
-            }
-        }
-    }
-
-    [RelayCommand]
-    private void SaveCurrentQueryAsSnippet()
-    {
-        NewSnippetName = string.Empty;
-        NewSnippetDescription = string.Empty;
-        NewSnippetSqlText = SqlText;
-        NewSnippetTags = string.Empty;
-        SelectedNavigationItem = NavigationItems.First(n => n.Code == "SN");
-    }
-
-    [RelayCommand]
-    private void RequestDeleteSnippet(SnippetItemViewModel item) =>
-        item.IsPendingDelete = true;
-
-    [RelayCommand]
-    private void CancelDeleteSnippet(SnippetItemViewModel item) =>
-        item.IsPendingDelete = false;
-
-    [RelayCommand]
-    private async Task DeleteSnippetAsync(SnippetItemViewModel item)
-    {
-        item.IsPendingDelete = false;
-        await _snippetService.DeleteSnippetAsync(item.Id);
-        _allSnippetItems.Remove(item);
-        ApplySnippetFilter();
-        SnippetStatusMessage = $"Deleted \"{item.Name}\".";
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRunCompare))]
-    private async Task RunCompareAsync()
-    {
-        IsCompareRunning = true;
-        IsBusy = true;
-        _cts = new CancellationTokenSource();
-        CompareStatusMessage = "Running EXPLAIN ANALYZE on both queries…";
-        CompareHasResults = false;
-        CompareResultA = null;
-        CompareResultB = null;
-
-        try
-        {
-            var conn  = CreateExecutableConnection();
-            var taskA = _explainAnalyzeService.ExplainAnalyzeAsync(conn, CompareQueryAText, _cts.Token);
-            var taskB = _explainAnalyzeService.ExplainAnalyzeAsync(conn, CompareQueryBText, _cts.Token);
-            await Task.WhenAll(taskA, taskB);
-
-            var resultA = BuildCompareResult("Query A", taskA.Result);
-            var resultB = BuildCompareResult("Query B", taskB.Result);
-            DetermineCompareWinner(resultA, resultB, taskA.Result, taskB.Result);
-            PopulateComparePlanNodes(ComparePlanNodesA, taskA.Result);
-            PopulateComparePlanNodes(ComparePlanNodesB, taskB.Result);
-
-            CompareResultA    = resultA;
-            CompareResultB    = resultB;
-            CompareHasResults = true;
-
-            var winner = resultA.IsWinner ? "A" : resultB.IsWinner ? "B" : "Tie";
-            CompareStatusMessage = winner == "Tie"
-                ? "Done — no clear winner (equal cost/time)."
-                : $"Done — Query {winner} is faster.";
-        }
-        catch (OperationCanceledException)
-        {
-            CompareStatusMessage = "Compare cancelled.";
-        }
-        catch (Exception ex)
-        {
-            CompareStatusMessage = GetFriendlyErrorMessage(ex);
-        }
-        finally
-        {
-            IsCompareRunning = false;
-            IsBusy = false;
-            _cts?.Dispose();
-            _cts = null;
-        }
-    }
-
-    private bool CanRunCompare() =>
-        SelectedConnection is not null &&
-        !string.IsNullOrWhiteSpace(CompareQueryAText) &&
-        !string.IsNullOrWhiteSpace(CompareQueryBText) &&
-        !IsCompareRunning &&
-        !IsBusy;
-
-    private static ComparePlanResultViewModel BuildCompareResult(string label, ExecutionPlan plan)
-    {
-        var root      = plan.Root;
-        var cost      = root?.TotalCost is null         ? "n/a" : root.TotalCost.Value.ToString("N2");
-        var time      = root?.ActualTotalTimeMs is null ? "n/a" : $"{root.ActualTotalTimeMs.Value:N2} ms";
-        var estRows   = root?.EstimatedRows is null     ? "n/a" : root.EstimatedRows.Value.ToString("N0");
-        var actRows   = root?.ActualRows is null        ? "n/a" : root.ActualRows.Value.ToString("N0");
-        var nodeCount = FlattenPlan(root).Count();
-        var issues    = plan.Issues;
-
-        var issueColor = issues.Any(i => i.Severity == IssueSeverity.Critical) ? "#FF8A7A" :
-                         issues.Any(i => i.Severity == IssueSeverity.Warning)  ? "#FFD166" :
-                         issues.Count > 0                                       ? "#80B8FF" : "#7BD88F";
-
-        return new ComparePlanResultViewModel
-        {
-            Label         = label,
-            RootLabel     = root?.Label ?? "No plan returned",
-            CostText      = cost,
-            TimeText      = time,
-            EstRowsText   = estRows,
-            ActRowsText   = actRows,
-            NodeCountText = $"{nodeCount} node(s)",
-            IssueText     = issues.Count == 0 ? "No issues" : $"{issues.Count} issue(s)",
-            IssueColor    = issueColor,
-        };
-    }
-
-    private static void DetermineCompareWinner(
-        ComparePlanResultViewModel a,
-        ComparePlanResultViewModel b,
-        ExecutionPlan planA,
-        ExecutionPlan planB)
-    {
-        var timeA = planA.Root?.ActualTotalTimeMs;
-        var timeB = planB.Root?.ActualTotalTimeMs;
-        if (timeA.HasValue && timeB.HasValue)
-        {
-            if (timeA.Value < timeB.Value) a.IsWinner = true;
-            else if (timeB.Value < timeA.Value) b.IsWinner = true;
-            return;
-        }
-
-        var costA = planA.Root?.TotalCost;
-        var costB = planB.Root?.TotalCost;
-        if (costA.HasValue && costB.HasValue)
-        {
-            if (costA.Value < costB.Value) a.IsWinner = true;
-            else if (costB.Value < costA.Value) b.IsWinner = true;
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanExportResults))]
-    private async Task ExportResultsToCsvAsync()
-    {
-        if (RequestSaveFilePath is null) return;
-
-        var path = await RequestSaveFilePath("results.csv");
-        if (path is null) return;
-
-        try
-        {
-            var columns = ResultColumns.ToList();
-            var lines = new System.Text.StringBuilder();
-            lines.AppendLine(string.Join(",", columns.Select(EscapeCsvField)));
-
-            foreach (var row in ResultRows)
-            {
-                lines.AppendLine(string.Join(",",
-                    columns.Select(col => EscapeCsvField(FormatCellValue(row.Values.GetValueOrDefault(col))))));
-            }
-
-            await File.WriteAllTextAsync(path, lines.ToString(), System.Text.Encoding.UTF8);
-            QueryStatusMessage = $"Exported {ResultRows.Count} row(s) to {Path.GetFileName(path)}.";
-        }
-        catch (Exception ex)
-        {
-            QueryStatusMessage = $"Export failed: {ex.Message}";
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanExportResults))]
-    private async Task ExportResultsToJsonAsync()
-    {
-        if (RequestSaveFilePath is null) return;
-
-        var path = await RequestSaveFilePath("results.json");
-        if (path is null) return;
-
-        try
-        {
-            var columns = ResultColumns.ToList();
-            var rows = ResultRows
-                .Select(row => columns.ToDictionary(
-                    col => col,
-                    col => (object?)FormatCellValue(row.Values.GetValueOrDefault(col))))
-                .ToList();
-
-            var json = System.Text.Json.JsonSerializer.Serialize(
-                rows,
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-
-            await File.WriteAllTextAsync(path, json, System.Text.Encoding.UTF8);
-            QueryStatusMessage = $"Exported {ResultRows.Count} row(s) to {Path.GetFileName(path)}.";
-        }
-        catch (Exception ex)
-        {
-            QueryStatusMessage = $"Export failed: {ex.Message}";
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanExportPlan))]
-    private async Task ExportPlanToHtmlAsync()
-    {
-        if (RequestSaveFilePath is null) return;
-        var path = await RequestSaveFilePath("plan.html");
-        if (path is null) return;
-        try
-        {
-            var html = PlanHtmlExporter.Generate(SqlText, VisualPlanNodes, PlanIssues, PlanSummaryText);
-            await File.WriteAllTextAsync(path, html, System.Text.Encoding.UTF8);
-            QueryStatusMessage = $"Plan exported to {Path.GetFileName(path)}.";
-        }
-        catch (Exception ex)
-        {
-            QueryStatusMessage = $"Export failed: {ex.Message}";
-        }
-    }
-
-    private bool CanExportPlan() => VisualPlanNodes.Count > 0;
-
-    [RelayCommand(CanExecute = nameof(CanExportCompare))]
-    private async Task ExportCompareToHtmlAsync()
-    {
-        if (RequestSaveFilePath is null) return;
-        var path = await RequestSaveFilePath("compare.html");
-        if (path is null) return;
-        try
-        {
-            var html = CompareHtmlExporter.Generate(
-                CompareQueryAText, CompareQueryBText,
-                CompareResultA, CompareResultB,
-                ComparePlanNodesA, ComparePlanNodesB);
-            await File.WriteAllTextAsync(path, html, System.Text.Encoding.UTF8);
-            CompareStatusMessage = $"Report saved to {Path.GetFileName(path)}.";
-        }
-        catch (Exception ex)
-        {
-            CompareStatusMessage = $"Export failed: {ex.Message}";
-        }
-    }
-
-    private bool CanExportCompare() => CompareHasResults;
-
-    [RelayCommand]
-    private void FormatSql()
-    {
-        if (!string.IsNullOrWhiteSpace(SqlText))
-            SqlText = SqlFormatter.Format(SqlText);
-    }
-
-    private static void PopulateComparePlanNodes(
-        ObservableCollection<PlanNodeVisualItemViewModel> target,
-        ExecutionPlan plan)
-    {
-        target.Clear();
-        if (plan.Root is null) return;
-        var rootCost = plan.Root.TotalCost;
-        var rootTime = plan.Root.ActualTotalTimeMs;
-        foreach (var (node, depth) in FlattenPlan(plan.Root))
-        {
-            var nodeIssues = plan.Issues
-                .Where(i => i.PlanNodeId == node.Id)
-                .Select(PlanIssueItemViewModel.FromIssue)
-                .ToList();
-            target.Add(PlanNodeVisualItemViewModel.FromNode(node, depth, rootCost, rootTime, nodeIssues));
-        }
-    }
-
-    private bool CanExportResults() => ResultRows.Count > 0;
-
-    private static string EscapeCsvField(string value)
-    {
-        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
-            return $"\"{value.Replace("\"", "\"\"")}\"";
-        return value;
-    }
-
-    private async Task RecordHistoryAsync(
-        bool succeeded,
-        TimeSpan? duration,
-        long? rowCount,
-        string? errorMessage,
-        string? explainJson = null)
-    {
-        var entry = await _historyService.RecordAsync(new RecordQueryHistoryRequest
-        {
-            ConnectionId = SelectedConnection?.Id,
-            DatabaseType = SelectedConnection?.Connection.DatabaseType,
-            SqlText = SqlText,
-            Duration = duration,
-            RowCount = rowCount,
-            Succeeded = succeeded,
-            ErrorMessage = errorMessage,
-            ExplainJson = explainJson
-        });
-
-        HistoryItems.Insert(0, QueryHistoryItemViewModel.FromEntry(entry));
-    }
+        null => "NULL",
+        DateTime dt => dt.ToString("u"),
+        DateTimeOffset dto => dto.ToString("u"),
+        decimal d => d.ToString("N2"),
+        double d => d.ToString("N2"),
+        _ => value.ToString() ?? string.Empty,
+    };
 
     private static string GetFriendlyErrorMessage(Exception exception)
     {
@@ -1423,273 +495,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return $"Query failed: {msg.Split('\n')[0].Trim()}";
     }
 
-    private Connection CreateExecutableConnection()
-    {
-        var connection = SelectedConnection?.Connection;
-
-        if (connection is null)
-        {
-            throw new InvalidOperationException("Select a connection first.");
-        }
-
-        return new Connection
-        {
-            Id = connection.Id,
-            Name = connection.Name,
-            DatabaseType = connection.DatabaseType,
-            Host = connection.Host,
-            Port = connection.Port,
-            Database = connection.Database,
-            Username = connection.Username,
-            Password = string.IsNullOrWhiteSpace(SelectedConnectionPassword) ? null : SelectedConnectionPassword,
-            UseSsl = connection.UseSsl,
-            CreatedAt = connection.CreatedAt,
-            LastUsedAt = connection.LastUsedAt
-        };
-    }
-
-    private static IEnumerable<(PlanNode Node, int Depth)> FlattenPlan(PlanNode? root)
-    {
-        if (root is null)
-        {
-            yield break;
-        }
-
-        foreach (var item in FlattenPlan(root, 0))
-        {
-            yield return item;
-        }
-    }
-
-    private static IEnumerable<(PlanNode Node, int Depth)> FlattenPlan(PlanNode node, int depth)
-    {
-        yield return (node, depth);
-
-        foreach (var child in node.Children)
-        {
-            foreach (var item in FlattenPlan(child, depth + 1))
-            {
-                yield return item;
-            }
-        }
-    }
-
-    private void ApplyGraphLayout(PlanNode root)
-    {
-        var positions = GraphLayoutEngine.Arrange(root);
-
-        foreach (var vm in VisualPlanNodes)
-        {
-            if (positions.TryGetValue(vm.NodeId, out var pos))
-            {
-                vm.GraphX = pos.X;
-                vm.GraphY = pos.Y;
-            }
-        }
-
-        GraphEdges.Clear();
-        BuildEdges(root, positions);
-
-        var maxX = positions.Values.Select(p => p.X).DefaultIfEmpty(0).Max();
-        var maxY = positions.Values.Select(p => p.Y).DefaultIfEmpty(0).Max();
-        GraphWidth  = maxX + GraphLayoutEngine.NodeWidth  + 40;
-        GraphHeight = maxY + GraphLayoutEngine.NodeHeight + 40;
-        GraphZoom   = ComputeFitZoom?.Invoke() ?? 1.0;
-    }
-
-    private void BuildEdges(PlanNode node, IReadOnlyDictionary<Guid, (double X, double Y)> positions)
-    {
-        if (!positions.TryGetValue(node.Id, out var parentPos))
-            return;
-
-        foreach (var child in node.Children)
-        {
-            if (positions.TryGetValue(child.Id, out var childPos))
-            {
-                GraphEdges.Add(new GraphEdgeViewModel
-                {
-                    X1 = parentPos.X + GraphLayoutEngine.NodeWidth / 2,
-                    Y1 = parentPos.Y + GraphLayoutEngine.NodeHeight,
-                    X2 = childPos.X  + GraphLayoutEngine.NodeWidth / 2,
-                    Y2 = childPos.Y,
-                });
-            }
-
-            BuildEdges(child, positions);
-        }
-    }
-
-    private void UpdateIssuesBadge(IReadOnlyList<PlanIssue> issues)
-    {
-        HasPlanIssues = issues.Count > 0;
-        PlanIssuesBadgeText = $"{issues.Count} issue(s)";
-        PlanIssuesBadgeColor = issues.Any(i => i.Severity == IssueSeverity.Critical)
-            ? "#FF8A7A"
-            : issues.Any(i => i.Severity == IssueSeverity.Warning)
-                ? "#FFD166"
-                : "#80B8FF";
-    }
-
-    private static string BuildPlanSummary(PlanNode? root, int nodeCount, int issueCount)
-    {
-        if (root is null)
-        {
-            return "Explain returned no plan nodes.";
-        }
-
-        var cost = root.TotalCost is null ? "n/a" : root.TotalCost.Value.ToString("N2");
-        var rows = root.EstimatedRows is null ? "n/a" : root.EstimatedRows.Value.ToString("N0");
-        var actualTime = root.ActualTotalTimeMs is null ? "n/a" : $"{root.ActualTotalTimeMs.Value:N2} ms";
-
-        return $"Root: {root.Label}\nNodes: {nodeCount}\nIssues: {issueCount}\nEstimated cost: {cost}\nEstimated rows: {rows}\nActual time: {actualTime}";
-    }
-
-    private void BuildResultGrid(
-        IReadOnlyList<string> columns,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows)
-    {
-        ResultColumns.Clear();
-        ResultColumnsView.Clear();
-        ResultRows.Clear();
-        _resultRowsBacking.Clear();
-        _resultSortColumn = null;
-        _resultSortAscending = true;
-
-        if (columns.Count == 0)
-        {
-            ResultTotalWidth = 0;
-            return;
-        }
-
-        var widths = columns.ToDictionary(
-            col => col,
-            col =>
-            {
-                var maxContent = rows.Count == 0
-                    ? 0
-                    : rows.Max(row => FormatCellValue(row.GetValueOrDefault(col)).Length);
-                var chars = Math.Max(col.Length, maxContent);
-                return Math.Clamp(chars * 7.5 + 22, 72, 360);
-            });
-
-        foreach (var col in columns)
-        {
-            ResultColumns.Add(col);
-            ResultColumnsView.Add(new ResultColumnViewModel { Name = col, Width = widths[col] });
-        }
-
-        ResultTotalWidth = widths.Values.Sum();
-
-        foreach (var row in rows)
-        {
-            _resultRowsBacking.Add(new QueryResultRowViewModel
-            {
-                Values = row,
-                Cells = columns.Select(col =>
-                {
-                    var value = row.GetValueOrDefault(col);
-                    return new ResultCellViewModel
-                    {
-                        Text = FormatCellValue(value),
-                        Width = widths[col],
-                        IsNull = value is null
-                    };
-                }).ToList()
-            });
-        }
-
-        foreach (var row in _resultRowsBacking)
-            ResultRows.Add(row);
-    }
-
-    [RelayCommand]
-    private void SortResultsByColumn(string columnName)
-    {
-        if (string.IsNullOrEmpty(columnName) || _resultRowsBacking.Count == 0)
-            return;
-
-        if (_resultSortColumn == columnName)
-            _resultSortAscending = !_resultSortAscending;
-        else
-        {
-            _resultSortColumn = columnName;
-            _resultSortAscending = true;
-        }
-
-        _resultRowsBacking.Sort((a, b) =>
-        {
-            var left = a.Values.GetValueOrDefault(columnName);
-            var right = b.Values.GetValueOrDefault(columnName);
-            if (left is null && right is null) return 0;
-            if (left is null) return 1;
-            if (right is null) return -1;
-            var comparison = CompareNonNull(left, right);
-            return _resultSortAscending ? comparison : -comparison;
-        });
-
-        ResultRows.Clear();
-        foreach (var row in _resultRowsBacking)
-            ResultRows.Add(row);
-
-        var glyph = _resultSortAscending ? "▲" : "▼";
-        var rebuilt = ResultColumnsView
-            .Select(col => new ResultColumnViewModel
-            {
-                Name = col.Name,
-                Width = col.Width,
-                SortGlyph = col.Name == columnName ? glyph : string.Empty
-            })
-            .ToList();
-        ResultColumnsView.Clear();
-        foreach (var col in rebuilt)
-            ResultColumnsView.Add(col);
-    }
-
-    [RelayCommand]
-    private void CopySelectedResultRow(QueryResultRowViewModel? row)
-    {
-        if (row is null || CopyTextToClipboard is null)
-            return;
-
-        var line = string.Join(
-            "\t",
-            ResultColumns.Select(col => FormatCellValue(row.Values.GetValueOrDefault(col))));
-        _ = CopyTextToClipboard(line);
-    }
-
-    private static int CompareNonNull(object left, object right)
-    {
-        if (left.GetType() == right.GetType() && left is IComparable comparable)
-            return comparable.CompareTo(right);
-
-        var leftText = left.ToString() ?? string.Empty;
-        var rightText = right.ToString() ?? string.Empty;
-        if (double.TryParse(leftText, out var leftNumber) && double.TryParse(rightText, out var rightNumber))
-            return leftNumber.CompareTo(rightNumber);
-
-        return string.Compare(leftText, rightText, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string FormatCellValue(object? value) => value switch
-    {
-        null => "NULL",
-        DateTime dt => dt.ToString("u"),
-        DateTimeOffset dto => dto.ToString("u"),
-        decimal d => d.ToString("N2"),
-        double d => d.ToString("N2"),
-        _ => value.ToString() ?? string.Empty,
-    };
-
-    private static Dictionary<Guid, IReadOnlyList<PlanIssueItemViewModel>> BuildIssueIndex(IReadOnlyList<PlanIssue> issues)
+    private static Dictionary<Guid, IReadOnlyList<PlanIssueItemViewModel>> BuildIssueIndex(
+        IReadOnlyList<PlanIssue> issues)
     {
         var result = new Dictionary<Guid, List<PlanIssueItemViewModel>>();
 
         foreach (var issue in issues)
         {
-            if (issue.PlanNodeId is null)
-            {
-                continue;
-            }
+            if (issue.PlanNodeId is null) continue;
 
             if (!result.TryGetValue(issue.PlanNodeId.Value, out var nodeIssues))
             {
@@ -1703,336 +516,5 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return result.ToDictionary(
             pair => pair.Key,
             pair => (IReadOnlyList<PlanIssueItemViewModel>)pair.Value);
-    }
-
-    private void ClearConnectionForm()
-    {
-        EditingConnectionId = null;
-        NewConnectionName = string.Empty;
-        NewConnectionDatabaseType = DatabaseType.PostgreSql;
-        NewConnectionHost = "localhost";
-        NewConnectionPort = "5432";
-        NewConnectionDatabase = string.Empty;
-        NewConnectionUsername = string.Empty;
-        NewConnectionPassword = string.Empty;
-        NewConnectionUseSsl = false;
-    }
-
-    private bool TryParsePort(out int? port)
-    {
-        port = null;
-
-        if (IsLocalDatabaseConnection || string.IsNullOrWhiteSpace(NewConnectionPort))
-        {
-            return true;
-        }
-
-        if (!int.TryParse(NewConnectionPort, out var parsedPort))
-        {
-            return false;
-        }
-
-        port = parsedPort;
-        return true;
-    }
-
-    [RelayCommand]
-    private void OpenAdvisorSettings() => IsAdvisorSettingsVisible = true;
-
-    [RelayCommand]
-    private void CloseAdvisorSettings() => IsAdvisorSettingsVisible = false;
-
-    [RelayCommand]
-    private async Task SaveAdvisorSettingsAsync()
-    {
-        if (_secretStore is null) return;
-        await _secretStore.SaveAsync("advisor-api-key", AdvisorApiKey);
-        await _secretStore.SaveAsync("advisor-endpoint", AdvisorEndpoint);
-        await _secretStore.SaveAsync("advisor-model", AdvisorModel);
-        IsAdvisorSettingsVisible = false;
-        RunAdvisorCommand.NotifyCanExecuteChanged();
-    }
-
-    [RelayCommand]
-    private async Task LoadAdvisorSettingsAsync()
-    {
-        if (_secretStore is null) return;
-        AdvisorApiKey    = await _secretStore.LoadAsync("advisor-api-key")    ?? string.Empty;
-        AdvisorEndpoint  = await _secretStore.LoadAsync("advisor-endpoint")   ?? string.Empty;
-        AdvisorModel     = await _secretStore.LoadAsync("advisor-model")      ?? string.Empty;
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRunAdvisor))]
-    private async Task RunAdvisorAsync()
-    {
-        if (_advisorService is null) return;
-        IsAdvisorRunning = true;
-        AdvisorOutput    = string.Empty;
-        try
-        {
-            var dbType = SelectedConnection?.DatabaseType.ToString() ?? "Unknown";
-            var result = await _advisorService.AnalyzeAsync(SqlText, dbType, _currentPlanIssues);
-
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine(result.Summary);
-            if (result.Suggestions.Count > 0)
-            {
-                sb.AppendLine();
-                sb.AppendLine("Suggestions:");
-                foreach (var s in result.Suggestions)
-                    sb.AppendLine($"- {s}");
-            }
-            if (!string.IsNullOrWhiteSpace(result.RewrittenSql))
-            {
-                sb.AppendLine();
-                sb.AppendLine("Rewritten SQL:");
-                sb.AppendLine(result.RewrittenSql);
-            }
-
-            AdvisorOutput       = sb.ToString().TrimEnd();
-            IsAdvisorPanelVisible = true;
-        }
-        catch (Exception ex)
-        {
-            AdvisorOutput = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            IsAdvisorRunning = false;
-        }
-    }
-
-    private bool CanRunAdvisor() =>
-        !string.IsNullOrWhiteSpace(SqlText) && !IsAdvisorRunning && (_advisorService?.IsConfigured == true);
-
-    [RelayCommand]
-    private void CloseAdvisorPanel() => IsAdvisorPanelVisible = false;
-
-    private sealed class DesignConnectionService : IConnectionService
-    {
-        public Task<IReadOnlyList<Connection>> GetConnectionsAsync(CancellationToken cancellationToken = default)
-        {
-            IReadOnlyList<Connection> connections =
-            [
-                new()
-                {
-                    Name = "Sample PostgreSQL",
-                    DatabaseType = DatabaseType.PostgreSql,
-                    Host = "localhost",
-                    Port = 5432,
-                    Database = "app_db",
-                    Username = "postgres"
-                }
-            ];
-
-            return Task.FromResult(connections);
-        }
-
-        public Task<Connection?> GetConnectionAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<Connection?>(null);
-        }
-
-        public Task<Connection> CreateConnectionAsync(
-            CreateConnectionRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new Connection
-            {
-                Name = request.Name,
-                DatabaseType = request.DatabaseType,
-                Host = request.Host,
-                Port = request.Port,
-                Database = request.Database,
-                Username = request.Username,
-                Password = request.Password,
-                UseSsl = request.UseSsl
-            });
-        }
-
-        public Task<Connection?> UpdateConnectionAsync(
-            Guid id,
-            UpdateConnectionRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult<Connection?>(null);
-        }
-
-        public Task<bool> DeleteConnectionAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(false);
-        }
-
-        public Task<ConnectionTestResult> TestConnectionAsync(
-            CreateConnectionRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(ConnectionTestResult.Success("Design-time connection test succeeded."));
-        }
-    }
-
-    private sealed class DesignQueryExecutionService : IQueryExecutionService
-    {
-        public Task<QueryResult> ExecuteAsync(
-            Connection connection,
-            string sql,
-            CancellationToken cancellationToken = default)
-        {
-            QueryResult result = new()
-            {
-                Duration = TimeSpan.FromMilliseconds(8),
-                RowCount = 1,
-                Columns = ["value"],
-                Rows =
-                [
-                    new Dictionary<string, object?>
-                    {
-                        ["value"] = 1
-                    }
-                ]
-            };
-
-            return Task.FromResult(result);
-        }
-    }
-
-    private sealed class DesignExplainAnalyzeService : IExplainAnalyzeService
-    {
-        public Task<ExecutionPlan> ExplainAsync(
-            Connection connection,
-            string sql,
-            CancellationToken cancellationToken = default)
-        {
-            return ExplainAnalyzeAsync(connection, sql, cancellationToken);
-        }
-
-        public Task<ExecutionPlan> ExplainAnalyzeAsync(
-            Connection connection,
-            string sql,
-            CancellationToken cancellationToken = default)
-        {
-            ExecutionPlan plan = new()
-            {
-                Root = new PlanNode
-                {
-                    NodeType = NodeType.SeqScan,
-                    Label = "Seq Scan on sample_table",
-                    TotalCost = 12.25m,
-                    EstimatedRows = 12500
-                },
-                Issues =
-                [
-                    new PlanIssue
-                    {
-                        Code = "SEQ_SCAN_LARGE_TABLE",
-                        Severity = IssueSeverity.Critical,
-                        Title = "Sequential scan on a large row set",
-                        Description = "Seq Scan on sample_table scans about 12,500 row(s).",
-                        Recommendation = "Check WHERE and JOIN predicates and add an index."
-                    }
-                ],
-                RawJson = "{}"
-            };
-
-            return Task.FromResult(plan);
-        }
-    }
-
-    private sealed class DesignPlanParserService : IPlanParserService
-    {
-        public ExecutionPlan Parse(DatabaseType databaseType, string explainOutput)
-        {
-            return new ExecutionPlan
-            {
-                Root = new PlanNode
-                {
-                    NodeType = NodeType.Unknown,
-                    Label = "Saved execution plan"
-                },
-                RawJson = explainOutput
-            };
-        }
-    }
-
-    private sealed class DesignHistoryService : IHistoryService
-    {
-        public Task<IReadOnlyList<QueryHistoryEntry>> GetRecentAsync(
-            int limit = 100,
-            CancellationToken cancellationToken = default)
-        {
-            IReadOnlyList<QueryHistoryEntry> entries =
-            [
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    ConnectionName = "Sample PostgreSQL",
-                    SqlText = "select 1;",
-                    ExecutedAt = DateTimeOffset.UtcNow,
-                    Duration = TimeSpan.FromMilliseconds(8),
-                    RowCount = 1,
-                    Status = "success"
-                }
-            ];
-
-            return Task.FromResult(entries);
-        }
-
-        public Task<QueryHistoryEntry> RecordAsync(
-            RecordQueryHistoryRequest request,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new QueryHistoryEntry
-            {
-                Id = Guid.NewGuid(),
-                ConnectionId = request.ConnectionId,
-                ConnectionName = "Sample PostgreSQL",
-                SqlText = request.SqlText,
-                ExecutedAt = DateTimeOffset.UtcNow,
-                Duration = request.Duration,
-                RowCount = request.RowCount,
-                Status = request.Succeeded ? "success" : "error",
-                ErrorMessage = request.ErrorMessage
-            });
-        }
-
-        public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default) =>
-            Task.FromResult(true);
-    }
-
-    private sealed class DesignSnippetService : ISnippetService
-    {
-        public Task<IReadOnlyList<Snippet>> GetSnippetsAsync(CancellationToken cancellationToken = default)
-        {
-            IReadOnlyList<Snippet> snippets =
-            [
-                new()
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Count all orders",
-                    Description = "Quick row count for the orders table",
-                    SqlText = "SELECT COUNT(*) FROM orders;",
-                    CreatedAt = DateTimeOffset.UtcNow
-                }
-            ];
-
-            return Task.FromResult(snippets);
-        }
-
-        public Task<Snippet> CreateSnippetAsync(CreateSnippetRequest request, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(new Snippet
-            {
-                Id = Guid.NewGuid(),
-                Name = request.Name,
-                Description = request.Description,
-                SqlText = request.SqlText,
-                CreatedAt = DateTimeOffset.UtcNow
-            });
-        }
-
-        public Task<bool> DeleteSnippetAsync(Guid id, CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(true);
-        }
     }
 }

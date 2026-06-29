@@ -2,9 +2,9 @@ namespace SQLVisualExplorer.Infrastructure.Database.Entities;
 
 public sealed class QueryHistoryEntity
 {
-    public string Id { get; set; } = string.Empty;
+    public Guid Id { get; set; }
 
-    public string? ConnectionId { get; set; }
+    public Guid? ConnectionId { get; set; }
 
     public ConnectionEntity? Connection { get; set; }
 

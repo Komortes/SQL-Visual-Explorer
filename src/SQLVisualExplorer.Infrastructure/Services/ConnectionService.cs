@@ -33,7 +33,7 @@ public sealed class ConnectionService(
     {
         var entity = await dbContext.Connections
             .AsNoTracking()
-            .FirstOrDefaultAsync(connection => connection.Id == id.ToString(), cancellationToken);
+            .FirstOrDefaultAsync(connection => connection.Id == id, cancellationToken);
 
         if (entity is null) return null;
         var password = await secretStore.LoadAsync(SecretKey(entity.Id), cancellationToken);
@@ -44,7 +44,7 @@ public sealed class ConnectionService(
     {
         var entity = new ConnectionEntity
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -66,7 +66,7 @@ public sealed class ConnectionService(
         CancellationToken cancellationToken = default)
     {
         var entity = await dbContext.Connections
-            .FirstOrDefaultAsync(connection => connection.Id == id.ToString(), cancellationToken);
+            .FirstOrDefaultAsync(connection => connection.Id == id, cancellationToken);
 
         if (entity is null) return null;
 
@@ -90,13 +90,12 @@ public sealed class ConnectionService(
 
     public async Task<bool> DeleteConnectionAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var idStr = id.ToString();
         var rowsDeleted = await dbContext.Connections
-            .Where(connection => connection.Id == idStr)
+            .Where(connection => connection.Id == id)
             .ExecuteDeleteAsync(cancellationToken);
 
         if (rowsDeleted > 0)
-            await secretStore.DeleteAsync(SecretKey(idStr), cancellationToken);
+            await secretStore.DeleteAsync(SecretKey(id), cancellationToken);
 
         return rowsDeleted > 0;
     }
@@ -108,9 +107,7 @@ public sealed class ConnectionService(
         var driver = drivers.FirstOrDefault(candidate => candidate.Supports(request.DatabaseType));
 
         if (driver is null)
-        {
             return ConnectionTestResult.Failure($"{request.DatabaseType} test connection is not supported yet.");
-        }
 
         var connection = new Connection
         {
@@ -127,33 +124,38 @@ public sealed class ConnectionService(
         return await driver.TestConnectionAsync(connection, cancellationToken);
     }
 
-    private static void Apply(ConnectionEntity entity, CreateConnectionRequest request)
-    {
-        entity.Name = request.Name.Trim();
-        entity.DatabaseType = request.DatabaseType.ToString();
-        entity.Host = NormalizeOptionalText(request.Host);
-        entity.Port = request.Port;
-        entity.Database = request.Database.Trim();
-        entity.Username = NormalizeOptionalText(request.Username);
-        entity.UseSsl = request.UseSsl;
-    }
+    private static void Apply(ConnectionEntity entity, CreateConnectionRequest request) =>
+        ApplyCore(entity, request.Name, request.DatabaseType, request.Host,
+                  request.Port, request.Database, request.Username, request.UseSsl);
 
-    private static void Apply(ConnectionEntity entity, UpdateConnectionRequest request)
+    private static void Apply(ConnectionEntity entity, UpdateConnectionRequest request) =>
+        ApplyCore(entity, request.Name, request.DatabaseType, request.Host,
+                  request.Port, request.Database, request.Username, request.UseSsl);
+
+    private static void ApplyCore(
+        ConnectionEntity entity,
+        string name,
+        DatabaseType databaseType,
+        string? host,
+        int? port,
+        string database,
+        string? username,
+        bool useSsl)
     {
-        entity.Name = request.Name.Trim();
-        entity.DatabaseType = request.DatabaseType.ToString();
-        entity.Host = NormalizeOptionalText(request.Host);
-        entity.Port = request.Port;
-        entity.Database = request.Database.Trim();
-        entity.Username = NormalizeOptionalText(request.Username);
-        entity.UseSsl = request.UseSsl;
+        entity.Name = name.Trim();
+        entity.DatabaseType = databaseType.ToString();
+        entity.Host = NormalizeOptionalText(host);
+        entity.Port = port;
+        entity.Database = database.Trim();
+        entity.Username = NormalizeOptionalText(username);
+        entity.UseSsl = useSsl;
     }
 
     private static Connection ToDomain(ConnectionEntity entity, string? password = null)
     {
         return new Connection
         {
-            Id = Guid.Parse(entity.Id),
+            Id = entity.Id,
             Name = entity.Name,
             DatabaseType = Enum.Parse<DatabaseType>(entity.DatabaseType),
             Host = entity.Host,
@@ -172,5 +174,5 @@ public sealed class ConnectionService(
     private static string? NormalizeOptionalText(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static string SecretKey(string id) => $"connection/{id}";
+    private static string SecretKey(Guid id) => $"connection/{id}";
 }

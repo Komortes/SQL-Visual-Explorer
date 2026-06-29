@@ -6,6 +6,8 @@ public interface IQueryAdvisorService
 {
     bool IsConfigured { get; }
 
+    Task RefreshAsync(CancellationToken cancellationToken = default);
+
     Task<AdvisorResult> AnalyzeAsync(
         string sql,
         string databaseType,

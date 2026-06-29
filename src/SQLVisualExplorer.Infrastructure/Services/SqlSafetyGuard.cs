@@ -139,14 +139,28 @@ internal static class SqlSafetyGuard
                 continue;
             }
 
-            if (!inDoubleQuote && current == '\'' && !IsEscaped(sql, index))
+            if (!inDoubleQuote && current == '\'')
             {
+                // Standard SQL escaping: '' (two consecutive quotes) inside a string is a literal quote.
+                // We do not honour backslash escaping here because it is off by default in PostgreSQL
+                // (standard_conforming_strings = on) and treating \ as an escape would allow bypass
+                // of the separator check on non-MySQL databases.
+                if (inSingleQuote && next == '\'')
+                {
+                    index++;
+                    continue;
+                }
                 inSingleQuote = !inSingleQuote;
                 continue;
             }
 
-            if (!inSingleQuote && current == '"' && !IsEscaped(sql, index))
+            if (!inSingleQuote && current == '"')
             {
+                if (inDoubleQuote && next == '"')
+                {
+                    index++;
+                    continue;
+                }
                 inDoubleQuote = !inDoubleQuote;
                 continue;
             }
@@ -163,18 +177,6 @@ internal static class SqlSafetyGuard
     private static bool IsOnlyTrailingSemicolon(string sql, int semicolonIndex)
     {
         return string.IsNullOrWhiteSpace(sql[(semicolonIndex + 1)..]);
-    }
-
-    private static bool IsEscaped(string sql, int index)
-    {
-        var slashCount = 0;
-
-        for (var candidate = index - 1; candidate >= 0 && sql[candidate] == '\\'; candidate--)
-        {
-            slashCount++;
-        }
-
-        return slashCount % 2 == 1;
     }
 
     private static string ReadFirstToken(string sql)

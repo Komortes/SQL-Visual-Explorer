@@ -10,25 +10,19 @@ public sealed class OpenAiAdvisorService : IQueryAdvisorService
 {
     private readonly ISecretStore _secretStore;
     private readonly HttpClient _http = new();
-    private bool _isConfiguredCache;
-    private DateTimeOffset _configuredCheckedAt = DateTimeOffset.MinValue;
+    private volatile bool _isConfigured;
 
     public OpenAiAdvisorService(ISecretStore secretStore)
     {
         _secretStore = secretStore;
     }
 
-    public bool IsConfigured
+    public bool IsConfigured => _isConfigured;
+
+    public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        get
-        {
-            if (DateTimeOffset.UtcNow - _configuredCheckedAt < TimeSpan.FromSeconds(60))
-                return _isConfiguredCache;
-            _isConfiguredCache = !string.IsNullOrWhiteSpace(
-                _secretStore.LoadAsync("advisor-api-key").GetAwaiter().GetResult());
-            _configuredCheckedAt = DateTimeOffset.UtcNow;
-            return _isConfiguredCache;
-        }
+        var key = await _secretStore.LoadAsync("advisor-api-key", cancellationToken);
+        _isConfigured = !string.IsNullOrWhiteSpace(key);
     }
 
     public async Task<AdvisorResult> AnalyzeAsync(

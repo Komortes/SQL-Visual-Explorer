@@ -2,29 +2,38 @@
 
 Desktop SQL analysis tool for query execution, execution-plan visualization, and optimization hints.
 
+![Editor view](docs/screenshots/editor.png)
+![Plan graph view](docs/screenshots/plan-graph.png)
+![Compare view](docs/screenshots/compare.png)
+
+## Features
+
+- **Multi-database support** — PostgreSQL, MySQL, MariaDB, SQLite, and SQL Server
+- **Query execution** — run queries with a resizable results grid, column sorting, and CSV/JSON export
+- **Execution plan visualization** — tree, node graph, and flame graph views from `EXPLAIN ANALYZE`
+- **Plan analysis** — automatic detection of seq scans, nested-loop issues, row-estimate mismatches, missing indexes, and more
+- **Plan comparison** — run two queries side-by-side and see cost/time/node-count diff with a winner indicator
+- **Snippet management** — save, tag, and search reusable SQL snippets
+- **Query history** — every run is recorded locally; reopen SQL or reload saved plans
+- **AI Advisor** — optional OpenAI-compatible endpoint that suggests rewrites and optimizations
+- **Secure credential storage** — passwords stored in OS keychain (Keychain on macOS, DPAPI on Windows, Secret Service on Linux)
+
 ## Project Layout
 
-- `src/SQLVisualExplorer.Desktop` - application entry point.
-- `src/SQLVisualExplorer.UI` - views, controls, and view models.
-- `src/SQLVisualExplorer.Application` - application services and use cases.
-- `src/SQLVisualExplorer.Infrastructure` - database drivers, parsers, persistence, and external integrations.
-- `src/SQLVisualExplorer.Domain` - domain models and enums.
-
-## Current State
-
-Avalonia desktop application with dependency injection, EF Core SQLite persistence, and startup migrations. Supports four database engines: **PostgreSQL, MySQL, MariaDB, and SQLite** — each with connection testing and full query execution. Query results are shown in a resizable grid; runs are recorded in local history and can be reopened in the editor.
-
-Execution plans are fetched via `EXPLAIN ANALYZE` (PostgreSQL/MySQL/MariaDB) and `EXPLAIN QUERY PLAN` (SQLite), parsed, and rendered as an interactive node graph (`PlanGraphControl`) with a graph layout engine that positions nodes by dependency depth. Each node shows cost, actual vs. estimated row counts, and detected issues (seq scan, high cost, row estimate mismatch, etc.).
-
-**Plan comparison** lets you run two queries side by side and see a summary diff — cost, timing, node count, and a winner indicator.
-
-**Snippet management** allows saving, browsing, and reusing SQL snippets across sessions.
-
-Passwords are accepted for connection testing and session query execution but are not persisted.
+```
+src/
+  SQLVisualExplorer.Desktop        # application entry point (Avalonia)
+  SQLVisualExplorer.UI             # views, controls, and view models
+  SQLVisualExplorer.Application    # service interfaces and use cases
+  SQLVisualExplorer.Infrastructure # database drivers, parsers, persistence
+  SQLVisualExplorer.Domain         # domain models and enums
+tests/
+  SQLVisualExplorer.Infrastructure.Tests
+```
 
 ## Build
 
-Target framework: `.NET 9` (`net9.0`).
+Target framework: `.NET 10` (`net10.0`).
 
 ```bash
 dotnet restore SQLVisualExplorer.sln
@@ -45,7 +54,7 @@ DOTNET_ROLL_FORWARD=Major dotnet test SQLVisualExplorer.sln --no-restore /m:1
 dotnet run --project src/SQLVisualExplorer.Desktop/SQLVisualExplorer.Desktop.csproj
 ```
 
-## EF Core
+## EF Core migrations
 
 Local EF tooling is pinned through `dotnet-tools.json`.
 

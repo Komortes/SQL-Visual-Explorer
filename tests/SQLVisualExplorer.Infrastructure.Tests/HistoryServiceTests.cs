@@ -65,7 +65,7 @@ public sealed class HistoryServiceTests
         {
             dbContext.Connections.Add(new ConnectionEntity
             {
-                Id = connectionId.ToString(),
+                Id = connectionId,
                 Name = "Local MySQL",
                 DatabaseType = DatabaseType.MySql.ToString(),
                 Database = "app_db",

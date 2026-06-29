@@ -31,12 +31,14 @@ public sealed class HistoryService(AppDbContext dbContext) : IHistoryService
     {
         var entity = new QueryHistoryEntity
         {
-            Id = Guid.NewGuid().ToString(),
-            ConnectionId = request.ConnectionId?.ToString(),
+            Id = Guid.NewGuid(),
+            ConnectionId = request.ConnectionId,
             DatabaseType = request.DatabaseType?.ToString(),
             SqlText = request.SqlText,
             ExecutedAt = DateTime.UtcNow,
-            DurationMs = request.Duration is null ? null : (long)Math.Round(request.Duration.Value.TotalMilliseconds),
+            DurationMs = request.Duration is null
+                ? null
+                : (long)Math.Round(request.Duration.Value.TotalMilliseconds),
             RowCount = request.RowCount,
             Status = request.Succeeded ? "success" : "error",
             ErrorMessage = request.ErrorMessage,
@@ -58,14 +60,10 @@ public sealed class HistoryService(AppDbContext dbContext) : IHistoryService
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var idString = id.ToString();
         var entity = await dbContext.QueryHistory
-            .FirstOrDefaultAsync(history => history.Id == idString, cancellationToken);
+            .FirstOrDefaultAsync(history => history.Id == id, cancellationToken);
 
-        if (entity is null)
-        {
-            return false;
-        }
+        if (entity is null) return false;
 
         dbContext.QueryHistory.Remove(entity);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -76,15 +74,18 @@ public sealed class HistoryService(AppDbContext dbContext) : IHistoryService
     {
         return new QueryHistoryEntry
         {
-            Id = Guid.Parse(entity.Id),
-            ConnectionId = entity.ConnectionId is null ? null : Guid.Parse(entity.ConnectionId),
+            Id = entity.Id,
+            ConnectionId = entity.ConnectionId,
             ConnectionName = entity.Connection?.Name ?? "Unknown connection",
-            DatabaseType = Enum.TryParse<DatabaseType>(entity.DatabaseType ?? entity.Connection?.DatabaseType, out var databaseType)
-                    ? databaseType
-                    : null,
+            DatabaseType = Enum.TryParse<DatabaseType>(
+                entity.DatabaseType ?? entity.Connection?.DatabaseType, out var databaseType)
+                ? databaseType
+                : null,
             SqlText = entity.SqlText,
             ExecutedAt = new DateTimeOffset(DateTime.SpecifyKind(entity.ExecutedAt, DateTimeKind.Utc)),
-            Duration = entity.DurationMs is null ? null : TimeSpan.FromMilliseconds(entity.DurationMs.Value),
+            Duration = entity.DurationMs is null
+                ? null
+                : TimeSpan.FromMilliseconds(entity.DurationMs.Value),
             RowCount = entity.RowCount,
             Status = entity.Status,
             ErrorMessage = entity.ErrorMessage,

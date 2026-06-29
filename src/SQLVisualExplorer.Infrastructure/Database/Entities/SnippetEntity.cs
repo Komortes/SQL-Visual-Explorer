@@ -2,7 +2,7 @@ namespace SQLVisualExplorer.Infrastructure.Database.Entities;
 
 public sealed class SnippetEntity
 {
-    public string Id { get; set; } = string.Empty;
+    public Guid Id { get; set; }
 
     public string Name { get; set; } = string.Empty;
 

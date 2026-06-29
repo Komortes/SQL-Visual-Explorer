@@ -23,7 +23,7 @@ public sealed class SnippetService(AppDbContext dbContext) : ISnippetService
     {
         var entity = new SnippetEntity
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             Name = request.Name.Trim(),
             Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             SqlText = request.SqlText,
@@ -40,7 +40,7 @@ public sealed class SnippetService(AppDbContext dbContext) : ISnippetService
     public async Task<bool> DeleteSnippetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var rowsDeleted = await dbContext.Snippets
-            .Where(snippet => snippet.Id == id.ToString())
+            .Where(snippet => snippet.Id == id)
             .ExecuteDeleteAsync(cancellationToken);
 
         return rowsDeleted > 0;
@@ -50,7 +50,7 @@ public sealed class SnippetService(AppDbContext dbContext) : ISnippetService
     {
         return new Snippet
         {
-            Id = Guid.Parse(entity.Id),
+            Id = entity.Id,
             Name = entity.Name,
             Description = entity.Description,
             SqlText = entity.SqlText,
@@ -71,10 +71,7 @@ public sealed class SnippetService(AppDbContext dbContext) : ISnippetService
 
     private static IReadOnlyList<string> ParseTags(string? tags)
     {
-        if (string.IsNullOrWhiteSpace(tags))
-        {
-            return [];
-        }
+        if (string.IsNullOrWhiteSpace(tags)) return [];
 
         try
         {
